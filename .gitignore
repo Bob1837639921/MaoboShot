@@ -5,7 +5,7 @@ __pycache__/
 # 虚拟环境
 .venv/
 venv/
-env/
+.env
 
 # PyInstaller 打包生成的文件
 build/
