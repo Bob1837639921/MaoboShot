@@ -108,17 +108,36 @@ def play_voice(text, status_signal=None):
     def run():
         try:
             send_status("⏳ 准备中...")
+            
             if use_cloud:
-                send_status("☁️ 云端合成...")
-                temp_audio = os.path.join(tool_dir, "temp_edge.mp3")
+                send_status("☁️ 云端流式...")
                 voice_name = "zh-CN-XiaoxiaoNeural"
-                async def gen_edge():
+                
+                # 1. 先把 mpv 启动起来，让它张开嘴等着 (注意最后的参数 '-')
+                # stdin=subprocess.PIPE 是关键，相当于插好了管子
+                player_process = subprocess.Popen(
+                    [mpv_exe, "--no-terminal", "--force-window=no", "-"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+
+                async def stream_edge():
                     communicate = edge_tts.Communicate(text, voice_name)
-                    await communicate.save(temp_audio)
-                asyncio.run(gen_edge())
-                if os.path.exists(temp_audio):
-                    send_status("🔊 播放中...") 
-                    subprocess.run([mpv_exe, "--no-terminal", "--force-window=no", temp_audio])
+                    # 2. 这里的 stream() 是个生成器，会一块一块地吐出音频数据
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio":
+                            # 3. 拿到一块数据，立刻塞进 mpv 的嘴里
+                            # 只要塞了第一块，mpv 就会立刻开始出声！
+                            player_process.stdin.write(chunk["data"])
+                            player_process.stdin.flush() # 确保不卡在管子里
+                    
+                    # 4. 喂完了，把嘴合上（关闭输入流），mpv 播完剩下的就会自己退出
+                    player_process.stdin.close()
+                    player_process.wait()
+
+                # 运行异步任务
+                asyncio.run(stream_edge())
             else:
                 send_status("⚡ 播放中...")
                 piper_exe = os.path.join(tool_dir, "piper.exe")
@@ -237,7 +256,7 @@ class SnippingWidget(QWidget):
     def _run_ocr_thread(self, img):
         if self.ocr_engine is None:
             self.ocr_engine = RapidOCR()
-        result, _ = self.ocr_engine(img)
+        result, _ = self.ocr_engine(np.array(img))
         if result:
             text = "\n".join([line[1] for line in result])
             if text.strip():
@@ -328,9 +347,9 @@ class TranslatorWorker(QObject):
                 system_prompt = (
                     f"你是一个专业的翻译助手。请将用户输入的文本翻译成{prompt_lang}。\n"
                     "要求：\n"
-                    "1. 翻译要自然、地道，符合语境。\n"
+                    "1. 保持专业术语准确无误。\n"
                     "2. 保留代码变量名。\n"
-                    "3. 直接输出翻译结果，不要废话。"
+                    "3. 仅返回译文。\n"
                 )
                 response = self.db_client.chat.completions.create(
                     model=DOUBAO_MODEL_EP,
