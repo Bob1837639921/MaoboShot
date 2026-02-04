@@ -1,0 +1,26 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# PyInstaller 打包生成的文件
+build/
+dist/
+*.spec
+
+# IDE 配置
+.idea/
+.vscode/
+
+# 项目的大文件依赖 (让用户自己下载)
+mpv/
+*.exe
+*.log
+
+# 敏感信息 (虽然你代码里改了，但防止有其他文件)
+key.txt
+secrets.py
