@@ -180,7 +180,7 @@ def play_voice(text, status_signal=None):
                         cmd_play = [mpv_exe, "--no-terminal", "--force-window=no", "--audio-buffer=0.2"]
                         if os.path.exists(silence_wav): cmd_play.append(silence_wav)
                         cmd_play.append(temp_wav)
-                        subprocess.run(cmd_play)
+                        subprocess.run(cmd_play, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
                 else:
                     print("❌ 错误：找不到 Piper.exe")
         except Exception as e:
@@ -290,7 +290,6 @@ class TranslatorWorker(QObject):
         self.executor = ThreadPoolExecutor(max_workers=8)
         
         self.db_client = None
-        print(f'DOUBAO_API_KEY：{DOUBAO_API_KEY},DOUBAO_MODEL_EP：{DOUBAO_MODEL_EP}')
         if DOUBAO_API_KEY and DOUBAO_MODEL_EP:
             try:
                 self.db_client = OpenAI(
