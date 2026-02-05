@@ -11,6 +11,7 @@ import re
 import ctypes
 from openai import OpenAI
 from io import BytesIO
+from dotenv import load_dotenv
 import wave 
 # --- PySide6 依赖 ---
 from PySide6.QtWidgets import (QApplication, QLabel, QVBoxLayout, QWidget, 
@@ -20,6 +21,14 @@ from PySide6.QtGui import QCursor, QPainter, QColor, QPen, QGuiApplication
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+else:
+    # 开发模式 (py文件)
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+env_path = os.path.join(application_path, '.env')
+load_dotenv(env_path)
 # ==========================================
 # 🛡️ 核心升级 1：强制获取管理员权限 (解决 Snipaste 冲突)
 # ==========================================
@@ -87,19 +96,20 @@ def force_focus_window(hwnd):
 
 def play_voice(text, status_signal=None):
     if not text: return
-
+    CREATE_NO_WINDOW = 0x08000000
     def send_status(msg):
         if status_signal:
             status_signal.emit(msg)
 
     if getattr(sys, 'frozen', False):
-        base_path = os.path.dirname(sys)
+        base_path = os.path.dirname(sys.executable)
+        tool_dir = os.path.join(base_path, "mpv")
     else:
         # 开发模式 (py文件)
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        tool_dir=r"D:\ManboShot\mpv"
     
     # 2. 使用 os.path.join 拼接，自动处理 Windows 的反斜杠问题
-    tool_dir = os.path.join(base_path, "mpv")
+    
     
     mpv_exe = os.path.join(tool_dir, "mpv.exe")
     
@@ -118,6 +128,7 @@ def play_voice(text, status_signal=None):
                 player_process = subprocess.Popen(
                     [mpv_exe, "--no-terminal", "--force-window=no", "-"],
                     stdin=subprocess.PIPE,
+                    creationflags=CREATE_NO_WINDOW,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
@@ -163,7 +174,7 @@ def play_voice(text, status_signal=None):
                 cmd_gen = [piper_exe, "--model", current_model, "--output_file", temp_wav]
                 
                 if os.path.exists(piper_exe):
-                    p = subprocess.Popen(cmd_gen, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+                    p = subprocess.Popen(cmd_gen, stdin=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
                     p.communicate(input=safe_text.encode('utf-8'))
                     if os.path.exists(temp_wav):
                         cmd_play = [mpv_exe, "--no-terminal", "--force-window=no", "--audio-buffer=0.2"]
@@ -279,6 +290,7 @@ class TranslatorWorker(QObject):
         self.executor = ThreadPoolExecutor(max_workers=8)
         
         self.db_client = None
+        print(f'DOUBAO_API_KEY：{DOUBAO_API_KEY},DOUBAO_MODEL_EP：{DOUBAO_MODEL_EP}')
         if DOUBAO_API_KEY and DOUBAO_MODEL_EP:
             try:
                 self.db_client = OpenAI(
@@ -509,7 +521,54 @@ class FloatingWindow(QWidget):
         hwnd = int(self.winId())
         force_focus_window(hwnd)
         self.input_edit.setFocus()
+    # ==========================================
+    # 🧠 新增：智能防遮挡移动逻辑
+    # ==========================================
+    def move_smart(self):
+        """支持多屏幕的智能移动逻辑"""
+        self.adjustSize()  # 确保拿到最新大小
+        
+        # 1. 获取鼠标当前位置
+        cursor_pos = QCursor.pos()
+        
+        # 2. 【关键修改】获取鼠标当前所在的屏幕（而不是主屏幕）
+        screen = QGuiApplication.screenAt(cursor_pos)
+        
+        # 防御性代码：万一鼠标位置很偏，找不到屏幕，就回退到主屏幕
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+            
+        screen_rect = screen.availableGeometry() # 获取该屏幕的矩形区域 (x, y, w, h)
+        
+        # 3. 预设目标位置（默认在鼠标右下方 +15像素）
+        target_x = cursor_pos.x() + 15
+        target_y = cursor_pos.y() + 15
+        
+        # 4. 获取窗口尺寸
+        win_w = self.width()
+        win_h = self.height()
+        
+        # 5. 【底部防遮挡】
+        # screen_rect.bottom() 会自动处理多屏坐标（比如副屏可能是 2160）
+        if target_y + win_h > screen_rect.bottom():
+            # 策略：改为显示在鼠标【上方】
+            target_y = cursor_pos.y() - win_h - 15
+            
+        # 6. 【右侧防遮挡】
+        # screen_rect.right() 也会自动处理多屏坐标（比如副屏右边缘是 3840）
+        if target_x + win_w > screen_rect.right():
+            # 策略：贴着该屏幕的右边缘
+            target_x = screen_rect.right() - win_w - 5
 
+        # 7. 【顶部防遮挡】
+        if target_y < screen_rect.top():
+            target_y = cursor_pos.y() + 15
+            
+        # 8. 【左侧防遮挡】(通常不太需要，但为了保险加上)
+        if target_x < screen_rect.left():
+            target_x = cursor_pos.x() + 15
+
+        self.move(target_x, target_y)
     @Slot()
     def start_snipping(self):
         if HAS_OCR:
@@ -523,8 +582,7 @@ class FloatingWindow(QWidget):
     def handle_ocr_result(self, text):
         self.input_edit.setPlainText(text)
         self.manual_translate()
-        cursor_pos = QCursor.pos()
-        self.move(cursor_pos.x() + 15, cursor_pos.y() + 15)
+        self.move_smart()
         self.show()
         QTimer.singleShot(50, self.nuke_activate_window)
 
@@ -532,15 +590,13 @@ class FloatingWindow(QWidget):
     def handle_hotkey_request(self, text):
         self.input_edit.setPlainText(text)
         self.manual_translate() 
-        cursor_pos = QCursor.pos()
-        self.move(cursor_pos.x() + 15, cursor_pos.y() + 15)
+        self.move_smart()
         self.show()
         QTimer.singleShot(50, self.nuke_activate_window)
 
     @Slot()
     def handle_show_window(self):
-        cursor_pos = QCursor.pos()
-        self.move(cursor_pos.x() - 100, cursor_pos.y() - 50)
+        self.move_smart()
         self.input_edit.clear() 
         self.result_label.hide()
         self.play_btn.hide()

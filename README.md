@@ -115,7 +115,7 @@ pip install pyinstaller
 2. 运行打包命令：
 ```bash
 # 注意：这里使用了智能路径判定，打包后必须把 mpv 文件夹放在 exe 旁边
-pyinstaller -F -w -n "MaoboShot" desktop_trans.py
+pyinstaller -F -w -i .\icon.ico -n "MaoboShot" MaoboShot.py
 
 ```
 
