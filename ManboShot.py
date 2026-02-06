@@ -14,15 +14,27 @@ from io import BytesIO
 from dotenv import load_dotenv
 import wave 
 # --- PySide6 依赖 ---
+# --- PySide6 依赖 (完整版) ---
 from PySide6.QtWidgets import (QApplication, QLabel, QVBoxLayout, QWidget, 
-                               QPushButton, QTextEdit, QFrame)
+                               QPushButton, QTextEdit, QFrame, 
+                               QSystemTrayIcon, QMenu, QStyle)  # <--- 补齐了这三个
+                               
 from PySide6.QtCore import Qt, QThread, Signal, QObject, Slot, QTimer, QEvent, QRect, QBuffer, QIODevice, QByteArray
-from PySide6.QtGui import QCursor, QPainter, QColor, QPen, QGuiApplication
+
+from PySide6.QtGui import (QCursor, QPainter, QColor, QPen, QGuiApplication, 
+                           QAction, QIcon, QPixmap)  # <--- 补齐了 QAction 和 QIcon
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 if getattr(sys, 'frozen', False):
-    application_path = os.path.dirname(sys.executable)
+    # 如果是打包后的环境
+    # if hasattr(sys, '_MEIPASS'):
+    #     # PyInstaller 打包后的资源目录 (单文件模式是临时目录，单目录模式v6+是 _internal)
+    #     application_path = sys._MEIPASS
+    # else:
+        icon_path = sys._MEIPASS
+    #     # 旧版本 fallback
+        application_path = os.path.dirname(sys.executable)
 else:
     # 开发模式 (py文件)
     application_path = os.path.dirname(os.path.abspath(__file__))
@@ -411,8 +423,8 @@ class FloatingWindow(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.StrongFocus) 
-        self.current_text_for_speech = "" 
-        
+        self.current_text_for_speech = ""
+        self.setup_tray()
         self.tts_finished_signal.connect(self.reset_play_btn)
         self.tts_status_signal.connect(self.update_play_btn_status)
 
@@ -479,7 +491,95 @@ class FloatingWindow(QWidget):
         self.show_window_signal.connect(self.handle_show_window)
         self.trigger_snipping_signal.connect(self.start_snipping)
         self.input_edit.installEventFilter(self)
+    def setup_tray(self):
+        """设置系统托盘图标 (双重搜索版)"""
+        self.tray_icon = QSystemTrayIcon(self)
+        
+        # --- 🕵️‍♂️ 核心修改：双重搜索逻辑 ---
+        # 1. 先定义两个可能的路径
+        # 路径A: PyInstaller 的内部临时目录 (如果用了 --add-data)
+        path_internal = os.path.join(icon_path, "icon.ico")
+        
+        # 路径B: EXE 文件所在的实际目录 (如果你手动复制了文件)
+        # 注意: sys.executable 是 EXE 的路径，dirname 是它所在的文件夹
+        exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else application_path
+        path_external = os.path.join(exe_dir, "icon.ico")
 
+        final_icon_path = None
+        
+        # 2. 依次检查
+        if os.path.exists(path_internal):
+            final_icon_path = path_internal
+            # print(f"DEBUG: 在内部目录找到了图标: {path_internal}")
+        elif os.path.exists(path_external):
+            final_icon_path = path_external
+            # print(f"DEBUG: 在外部目录找到了图标: {path_external}")
+            
+        # 3. 设置图标
+        if final_icon_path:
+            self.tray_icon.setIcon(QIcon(final_icon_path))
+        else:
+            # ⚠️ 实在找不到，画黄点
+            pixmap = QPixmap(16, 16)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(QColor("#ff9800"))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(2, 2, 12, 12)
+            painter.end()
+            self.tray_icon.setIcon(QIcon(pixmap))
+
+        # 创建右键菜单
+        tray_menu = QMenu()
+        
+        # 动作1: 显示面板
+        action_show = QAction("显示面板", self)
+        action_show.triggered.connect(self.show_window_signal.emit)
+        tray_menu.addAction(action_show)
+
+        # 动作2: 🚑 重置监听 (这里就是你的救命稻草)
+        action_reset = QAction("重置键盘监听", self)
+        action_reset.triggered.connect(self.reset_listener)
+        tray_menu.addAction(action_reset)
+
+        tray_menu.addSeparator()
+
+        # 动作3: 退出
+        action_quit = QAction("退出软件", self)
+        action_quit.triggered.connect(QApplication.instance().quit)
+        tray_menu.addAction(action_quit)
+
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.show()
+        
+        self.tray_icon.activated.connect(
+            lambda reason: self.show_window_signal.emit() if reason == QSystemTrayIcon.DoubleClick else None
+        )
+        
+    def reset_listener(self):
+        """手动重启键盘钩子"""
+        try:
+            print("正在重置键盘监听...")
+            keyboard.unhook_all() # 先卸载所有钩子
+            # 重新绑定
+            keyboard.add_hotkey('ctrl+c', check_hotkey)
+            keyboard.add_hotkey('alt+z', safe_trigger_snipping)
+            
+            # 弹个气泡提示告诉用户成功了
+            self.tray_icon.showMessage(
+                "ManboShot", 
+                "键盘监听已成功重置！👂", 
+                QSystemTrayIcon.Information, 
+                2000
+            )
+        except Exception as e:
+            self.tray_icon.showMessage(
+                "ManboShot", 
+                f"重置失败: {e}", 
+                QSystemTrayIcon.Warning, 
+                2000
+            )
     def eventFilter(self, obj, event):
         if obj == self.input_edit and event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Return and (event.modifiers() & Qt.ControlModifier):
