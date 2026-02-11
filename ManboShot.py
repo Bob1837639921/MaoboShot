@@ -132,7 +132,7 @@ def play_voice(text, status_signal=None):
             send_status("⏳ 准备中...")
             
             if use_cloud:
-                send_status("☁️ 云端流式...")
+                send_status("☁️ 云端连接...")
                 voice_name = "zh-CN-XiaoxiaoNeural"
                 
                 # 1. 先把 mpv 启动起来，让它张开嘴等着 (注意最后的参数 '-')
@@ -146,10 +146,17 @@ def play_voice(text, status_signal=None):
                 )
 
                 async def stream_edge():
+                    send_status("✨ AI合成中...")
                     communicate = edge_tts.Communicate(text, voice_name)
+                    
+                    first_chunk = True
                     # 2. 这里的 stream() 是个生成器，会一块一块地吐出音频数据
                     async for chunk in communicate.stream():
                         if chunk["type"] == "audio":
+                            if first_chunk:
+                                send_status("▶️ 开始朗读...")
+                                first_chunk = False
+                                
                             # 3. 拿到一块数据，立刻塞进 mpv 的嘴里
                             # 只要塞了第一块，mpv 就会立刻开始出声！
                             player_process.stdin.write(chunk["data"])
@@ -491,6 +498,48 @@ class FloatingWindow(QWidget):
         self.show_window_signal.connect(self.handle_show_window)
         self.trigger_snipping_signal.connect(self.start_snipping)
         self.input_edit.installEventFilter(self)
+    # --- 🖱️ 新增：窗口拖动逻辑 ---
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            # 记录鼠标按下时的相对位置
+            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self.drag_pos:
+            # 移动窗口到新位置
+            self.move(event.globalPosition().toPoint() - self.drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self.drag_pos = None
+    # ---------------------------
+    def restart_app(self):
+        """💥 彻底重启软件 (专治挂机假死)"""
+        print("正在执行重启...")
+        try:
+            # 1. 先把托盘图标藏起来，防止重启后右下角残留一个无效图标
+            self.tray_icon.hide()
+            
+            # 2. 准备重启命令
+            # getattr(sys, 'frozen', False) 用来判断是 EXE 还是 脚本
+            if getattr(sys, 'frozen', False):
+                # --- EXE 模式 ---
+                # 重新启动当前的 exe 文件
+                subprocess.Popen([sys.executable] + sys.argv[1:])
+            else:
+                # --- 脚本模式 ---
+                # 使用当前的 python 解释器重新运行脚本
+                subprocess.Popen([sys.executable] + sys.argv)
+            
+            # 3. 杀掉当前进程 (光荣下岗)
+            sys.exit(0)
+            
+        except Exception as e:
+            print(f"重启失败: {e}")
+            self.show_window_signal.emit()
+            self.tray_icon.showMessage("错误", f"重启失败: {e}", QSystemTrayIcon.Warning)
+            self.tray_icon.show()
     def setup_tray(self):
         """设置系统托盘图标 (双重搜索版)"""
         self.tray_icon = QSystemTrayIcon(self)
@@ -544,7 +593,9 @@ class FloatingWindow(QWidget):
         tray_menu.addAction(action_reset)
 
         tray_menu.addSeparator()
-
+        action_restart = QAction("🔄 重启软件", self)
+        action_restart.triggered.connect(self.restart_app) # 绑定刚才写的函数
+        tray_menu.addAction(action_restart)
         # 动作3: 退出
         action_quit = QAction("退出软件", self)
         action_quit.triggered.connect(QApplication.instance().quit)
@@ -709,7 +760,7 @@ class FloatingWindow(QWidget):
         self.result_label.show()
         self.play_btn.show()
         self.adjustSize()
-        
+        QTimer.singleShot(10, self.adjustSize)
         # 2. 关键判断：
         # 如果当前窗口是开着的，那我们才去刷新焦点。
         # 如果用户刚才点旁边把它关了 (isVisible == False)，那就什么都不要做！
