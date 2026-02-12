@@ -12,6 +12,7 @@ import ctypes
 from openai import OpenAI
 from io import BytesIO
 from dotenv import load_dotenv
+import certifi
 import wave 
 # --- PySide6 依赖 ---
 # --- PySide6 依赖 (完整版) ---
@@ -87,6 +88,8 @@ HYBRID_THRESHOLD = 30
 # 🛠️ Windows 底层工具箱
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
+
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 def force_focus_window(hwnd):
     if not hwnd: return
