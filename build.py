@@ -14,7 +14,7 @@ params = [
     'ManboShot.py',                # 主程序文件
     '-n', 'ManboShot',             # 生成的 EXE 名字
     '--distpath', 'D:\ManboShot', # 指定输出目录
-    '--onedir',                    # -D 文件夹模式 (最稳定，解决 _MEI 报错)
+    '--onefile',                    # -F 单文件模式
     '--windowed',                  # -w 无黑框模式
     '--noconfirm',                 # 覆盖不询问
     '--clean',                     # 清理缓存
