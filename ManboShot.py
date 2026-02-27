@@ -28,14 +28,12 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 if getattr(sys, 'frozen', False):
-    # 如果是打包后的环境
-    # if hasattr(sys, '_MEIPASS'):
-    #     # PyInstaller 打包后的资源目录 (单文件模式是临时目录，单目录模式v6+是 _internal)
-    #     application_path = sys._MEIPASS
-    # else:
-        icon_path = sys._MEIPASS
-    #     # 旧版本 fallback
-        application_path = os.path.dirname(sys.executable)
+    # 打包后：sys.executable 是 dist/ManboShot/ManboShot.exe
+    # os.path.dirname 拿一次是 dist/ManboShot/
+    # 再拿一次就是外层的 dist/ 目录了！
+    icon_path = sys._MEIPASS
+    exe_dir = os.path.dirname(sys.executable)
+    application_path = os.path.dirname(exe_dir)
 else:
     # 开发模式 (py文件)
     application_path = os.path.dirname(os.path.abspath(__file__))
@@ -117,7 +115,8 @@ def play_voice(text, status_signal=None):
             status_signal.emit(msg)
 
     if getattr(sys, 'frozen', False):
-        base_path = os.path.dirname(sys.executable)
+        exe_dir = os.path.dirname(sys.executable)
+        base_path = os.path.dirname(exe_dir)
         tool_dir = os.path.join(base_path, "mpv")
     else:
         # 开发模式 (py文件)
