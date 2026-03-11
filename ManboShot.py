@@ -5,10 +5,10 @@ import time
 import os
 import threading
 import subprocess
-import keyboard
 import pyperclip
 import re
 import ctypes
+from ctypes import wintypes
 from openai import OpenAI
 from io import BytesIO
 from dotenv import load_dotenv
@@ -71,6 +71,20 @@ try:
     HAS_IPA = True
 except ImportError:
     HAS_IPA = False
+
+
+# --- 🛡️ Windows API 常量 (商业级稳定快捷键) ---
+WM_HOTKEY = 0x0312
+WM_CLIPBOARDUPDATE = 0x031D
+WM_POWERBROADCAST = 0x0218
+PBT_APMRESUMEAUTOMATIC = 0x0012
+
+MOD_ALT = 0x0001
+VK_Q = 0x51
+VK_Z = 0x5A
+
+HOTKEY_ID_Q = 1
+HOTKEY_ID_Z = 2
 
 # ================= 🔧 超级配置中心 (请在这里填 Key) =================
 
@@ -500,6 +514,19 @@ class FloatingWindow(QWidget):
         self.show_window_signal.connect(self.handle_show_window)
         self.trigger_snipping_signal.connect(self.start_snipping)
         self.input_edit.installEventFilter(self)
+        # --- 🕒 双击 Ctrl+C 的时间记录 ---
+        self.last_clipboard_time = 0
+        self.last_clipboard_text = ""  # 新增：记住上次复制的内容
+        # --- 🛡️ 注册商业级系统热键 ---
+        self.hwnd = int(self.winId()) # 获取当前窗口的系统句柄
+        
+        # 注册 Alt + Q (显示面板)
+        ctypes.windll.user32.RegisterHotKey(self.hwnd, HOTKEY_ID_Q, MOD_ALT, VK_Q)
+        # 注册 Alt + Z (截图)
+        ctypes.windll.user32.RegisterHotKey(self.hwnd, HOTKEY_ID_Z, MOD_ALT, VK_Z)
+        
+        # --- 📋 注册剪贴板变动监听 (完美替代 Ctrl+C 键盘钩子) ---
+        ctypes.windll.user32.AddClipboardFormatListener(self.hwnd)
     # --- 🖱️ 新增：窗口拖动逻辑 ---
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -610,14 +637,11 @@ class FloatingWindow(QWidget):
             lambda reason: self.show_window_signal.emit() if reason == QSystemTrayIcon.DoubleClick else None
         )
         
+
     def reset_listener(self):
         """手动重启键盘钩子"""
         try:
             print("正在重置键盘监听...")
-            keyboard.unhook_all() # 先卸载所有钩子
-            # 重新绑定
-            keyboard.add_hotkey('ctrl+c', check_hotkey)
-            keyboard.add_hotkey('alt+z', safe_trigger_snipping)
             
             # 弹个气泡提示告诉用户成功了
             self.tray_icon.showMessage(
@@ -789,10 +813,74 @@ class FloatingWindow(QWidget):
         threading.Thread(target=play_voice, args=(self.current_text_for_speech, self.tts_status_signal)).start()
 
     def closeEvent(self, event):
+        # --- 🧹 退出时归还系统资源 ---
+        try:
+            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_Q)
+            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_Z)
+            ctypes.windll.user32.RemoveClipboardFormatListener(self.hwnd)
+        except:
+            pass
+
         if hasattr(self, 'thread'):
             self.thread.quit()
             self.thread.wait()
         super().closeEvent(event)
+    # === 👇 这是新加的系统消息中枢 👇 ===
+    def nativeEvent(self, eventType, message):
+        """👂 商业级系统消息中枢：处理永不丢失的热键、剪贴板和唤醒"""
+        try:
+            if eventType == b"windows_generic_MSG":
+                msg = ctypes.wintypes.MSG.from_address(int(message))
+                
+                # 1. ⌨️ 处理系统级热键 (Alt+Q, Alt+Z)
+                if msg.message == WM_HOTKEY:
+                    if msg.wParam == HOTKEY_ID_Q:
+                        self.handle_show_window()
+                    elif msg.wParam == HOTKEY_ID_Z:
+                        self.start_snipping()
+                        
+                # 2. 📋 处理剪贴板变动 (智能防抖 + 内容校验版)
+                elif msg.message == WM_CLIPBOARDUPDATE:
+                    current_time = time.time()
+                    time_diff = current_time - self.last_clipboard_time
+                    
+                    try:
+                        # 场景 A: 距离上次复制超过 0.6 秒，认为是全新的第一次复制
+                        if time_diff > 0.6:
+                            self.last_clipboard_time = current_time
+                            time.sleep(0.05) # 给系统一点时间把数据写完
+                            self.last_clipboard_text = pyperclip.paste()
+                            
+                        # 场景 B: 间隔在 0.15 ~ 0.6 秒之间，说明是人类的“双击 Ctrl+C”
+                        elif 0.15 < time_diff <= 0.6:
+                            time.sleep(0.05)
+                            current_text = pyperclip.paste()
+                            
+                            # 【核心防御】只有当两次复制的文字一模一样，且不为空时，才触发翻译！
+                            # 这完美防住了点击输入框产生的无效剪贴板刷新
+                            if current_text and current_text == self.last_clipboard_text:
+                                if not self.isVisible():
+                                    # 触发翻译信号
+                                    self.request_translation_signal.emit(current_text)
+                                # 触发成功后，重置状态
+                                self.last_clipboard_time = 0
+                                self.last_clipboard_text = ""
+                        
+                        # 场景 C: 间隔小于 0.15 秒 (time_diff <= 0.15)
+                        # 这是 Windows 的系统级“连发”，直接无视，什么都不做
+                        
+                    except Exception as e:
+                        print(f"读取剪贴板异常: {e}")
+
+                # 3. ⚡ 处理系统睡眠唤醒
+                elif msg.message == WM_POWERBROADCAST and msg.wParam == PBT_APMRESUMEAUTOMATIC:
+                    print("⚡ 系统唤醒，快捷键依然稳如泰山！")
+                    
+        except Exception as e:
+            pass
+            
+        return super().nativeEvent(eventType, message)
+    # === 👆 新加结束 👆 ===
 
 # 全局变量
 window = None
@@ -834,9 +922,6 @@ if __name__ == "__main__":
     window = FloatingWindow()
     window.setup_worker()
     
-    keyboard.add_hotkey('ctrl+c', check_hotkey)
-    keyboard.add_hotkey('alt+q', safe_show_window)
-    keyboard.add_hotkey('alt+z', safe_trigger_snipping)
     
     print("🚀 尊享版 (豆包AI+Piper+Edge-TTS) 已启动！")
     sys.exit(app.exec())
