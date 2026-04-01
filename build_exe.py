@@ -29,14 +29,25 @@ def build():
         
         # --- 📦 核心资源 ---
         f'--icon={icon_path}',      # 设置应用图标
-        f'--add-data={icon_path};.', # 把图标塞进程序肚子里 (解决托盘黄点)
-        f'--add-data={mpv_path};mpv',# 暴力把外部依赖播放器一并打包进去
+        # 将静态资源打包进去 (源目录;目标目录)
+        f'--add-data={icon_path};.',
+    ]
+
+    # 可选：如果项目里存在 mpv 文件夹，才进行打包
+    if mpv_path.exists():
+        args.append(f'--add-data={mpv_path};mpv')
+    else:
+        print(f"Warning: mpv folder not found at {mpv_path}! Skipping its package.")
+        print("Tip: This may cause speech to fail. Make sure the mpv folder and its .exe exist.")
         
-        # --- 🩹 暴力补全缺失库 (吸收旧 build.py 经验) ---
+    # --- 🩹 暴力补全缺失库 (吸收旧 build.py 经验) ---
+    args.extend([
         '--collect-all=openai',     # 打包 openai 全家桶
         '--collect-all=jiter',      # 强制打包 jiter (解决 Pydantic/OpenAI 的底层依赖报错)
         '--collect-all=edge_tts',   # 强制打包 edge-tts 资源
         '--collect-all=certifi',    # 打包 SSL 证书 (解决局域网/梯子下的 SSL 报错)
+        '--collect-all=rapidocr_onnxruntime', # 强制打包 OCR 的 ONNX 推理模型文件和动态库
+        '--collect-all=onnxruntime', # 强制打包 onnxruntime
         
         # --- 🕵️ 隐藏导入 (查漏补缺) ---
         '--hidden-import=jiter',
@@ -46,12 +57,12 @@ def build():
         '--hidden-import=deep_translator',
         '--hidden-import=PIL',
         '--hidden-import=PySide6.QtNetwork', # Qt 的网络库，部分环境下如果缺失会崩溃
-    ]
+    ])
 
-    print("🚀 开始清理与准备打包...")
-    print("📦 打包参数:", " ".join(args))
+    print("Starting build...")
+    print("Args:", " ".join(args))
     PyInstaller.__main__.run(args)
-    print("\n✅ 打包完成！请查看 dist/ManboShot 文件夹，运行里面的 ManboShot.exe 即可。")
+    print("\nBuild complete! Check dist/ManboShot folder and run ManboShot.exe.")
 
 if __name__ == '__main__':
     build()
