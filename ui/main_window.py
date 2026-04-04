@@ -513,30 +513,33 @@ class FloatingWindow(QWidget):
         if time_since_last <= 0.15:
             # 防抖：忽略单一复制动作产生的多次连续系统事件 (如浏览器复制通常会发两次)
             return
-        elif time_since_last <= 0.6 and text == self.last_clipboard_text:
+
+        # 🔥 交互优化：如果翻译窗口当前是打开可见状态，将其作为"剪贴板监听面板"。
+        # 只要复制了与当前不同的新文本，直接【单次复制】触发二次翻译。
+        if self.isVisible() and text != getattr(self, '_last_translated_text', ''):
+            self.last_clipboard_time = 0
+            self.last_clipboard_text = ""
+            self.handle_clipboard_update(text, popup=True, ignore_move=False)
+            return
+
+        # ⬇️ 双击唤醒逻辑
+        if time_since_last <= 0.6 and text == self.last_clipboard_text:
             # 成功触发双击复制 (间隔 0.15 ~ 0.6秒，且内容一致)
-            if not self.isVisible():
-                # 只有在文本真正发生变化时才触发新的网络请求
-                if text != getattr(self, '_last_translated_text', ''):
-                    self.handle_clipboard_update(text, popup=True)
-                else:
-                    self.handle_show_window()
+            if text != getattr(self, '_last_translated_text', ''):
+                # 文本是新的，触发网络翻译请求
+                self.handle_clipboard_update(text, popup=True)
             else:
-                # 如果已经可见，只刷新内容并移动到新鼠标位置
-                if text != getattr(self, '_last_translated_text', ''):
-                    self.handle_clipboard_update(text, popup=True)
-                else:
-                    self.handle_show_window()
+                # 文本和上次一模一样，不再请求网络，只把窗口叫出来并移动到鼠标位置
+                self.handle_show_window()
                 
             # 重置状态，防止快速按第三下时错误触发
             self.last_clipboard_time = 0
             self.last_clipboard_text = ""
         else:
-            # 记录第一次复制的特征 (或者新的不同文本)
-            # 只有当新文本与刚才翻译完保留在输入框的文本不一样时，才算作一次全新的双击计时
-            if text != getattr(self, '_last_translated_text', ''):
-                self.last_clipboard_time = current_time
-                self.last_clipboard_text = text
+            # 记录第一次复制的特征 (用于判定下一次是否是双击)
+            # 注意：不再限制 text != _last_translated_text，允许用户对着刚才的文本重新双击呼出窗口
+            self.last_clipboard_time = current_time
+            self.last_clipboard_text = text
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
