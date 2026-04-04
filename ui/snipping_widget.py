@@ -4,7 +4,7 @@ from io import BytesIO
 from PIL import Image
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, QRect, QBuffer, QIODevice, QByteArray
-from PySide6.QtGui import QPainter, QColor, QPen, QGuiApplication, QPixmap, QFont
+from PySide6.QtGui import QPainter, QColor, QPen, QGuiApplication, QPixmap, QFont, QCursor
 
 from core.ocr_engine import get_ocr_engine, HAS_OCR
 from core.config import logger
@@ -27,9 +27,20 @@ class SnippingWidget(QWidget):
         self.start_pos = None
         self.end_pos = None
         self.is_drawing = False
-        screen = QGuiApplication.primaryScreen()
+        
+        # 获取当前鼠标所在的屏幕
+        cursor_pos = QCursor.pos()
+        screen = QGuiApplication.screenAt(cursor_pos)
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+            
         if screen:
             self.original_pixmap = screen.grabWindow(0)
+            # 解决多显示器跳转问题：先解除全屏 -> 移动到目标屏幕坐标系 -> 再全屏
+            self.setWindowState(Qt.WindowNoState)
+            self.setGeometry(screen.geometry())
+            self.setWindowState(Qt.WindowFullScreen)
+            
             self.show()
             self.activateWindow()
         

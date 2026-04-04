@@ -298,6 +298,8 @@ class FloatingWindow(QWidget):
         self.result_label.show()
         self.play_btn.hide()
         
+        # 强制缩小窗口，解决遗留的过大弹窗问题
+        self.resize(1, 1)
         self.adjustSize()
         self.handle_show_window()
 
@@ -315,7 +317,7 @@ class FloatingWindow(QWidget):
             self.adjustSize()
             return
             
-        self.handle_clipboard_update(text, popup=True)
+        self.handle_clipboard_update(text, popup=True, ignore_move=True)
 
     def start_snipping(self):
         if not HAS_OCR: return
@@ -327,43 +329,67 @@ class FloatingWindow(QWidget):
         if text and text != getattr(self, '_last_translated_text', ''):
             self._last_translated_text = text
             self.current_text_for_speech = text
+            
+            # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
+            self.result_label.hide()
+            self.play_btn.hide()
+            self.resize(1, 1)
+            self.adjustSize()
+            
             self.request_translation_signal.emit(text)
 
-    def handle_clipboard_update(self, text, popup=True):
+    def handle_clipboard_update(self, text, popup=True, ignore_move=False):
         if not text: return
+        
         self.input_edit.blockSignals(True)
         self.input_edit.setText(text)
         self.input_edit.blockSignals(False)
         self.current_text_for_speech = text
         self._last_translated_text = text
+        
+        # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
+        self.result_label.hide()
+        self.play_btn.hide()
+        self.resize(1, 1)
+        self.adjustSize()
+        
         self.request_translation_signal.emit(text)
         if popup:
-            self.handle_show_window()
+            self.handle_show_window(ignore_move=ignore_move)
 
-    def handle_show_window(self):
+    def handle_show_window(self, ignore_move=False):
         self._clipboard_suppress_until = time.time() + 0.8
         
-        pos = QCursor.pos()
-        screen_geometry = QApplication.primaryScreen().availableGeometry()
-        
-        # 将窗口放置在鼠标右下角
-        win_x = pos.x() + 15
-        win_y = pos.y() + 15
-        
-        # 边界防溢出保护
-        if win_x + self.width() > screen_geometry.right():
-            win_x = screen_geometry.right() - self.width() - 15
-        if win_y + self.height() > screen_geometry.bottom():
-            win_y = screen_geometry.bottom() - self.height() - 15
+        if not ignore_move or not self.isVisible():
+            pos = QCursor.pos()
             
-        if not self.isVisible():
-            self.setWindowOpacity(0.0)
-            self.move(win_x, win_y)
-            self.show()
-            self.fade_anim.start()
+            # 获取鼠标当前所在的屏幕 (解决多屏幕弹窗强制飞回主屏幕的问题)
+            from PySide6.QtGui import QGuiApplication
+            screen = QGuiApplication.screenAt(pos)
+            if not screen:
+                screen = QApplication.primaryScreen()
+            screen_geometry = screen.availableGeometry()
+            
+            # 将窗口放置在鼠标右下角
+            win_x = pos.x() + 15
+            win_y = pos.y() + 15
+            
+            # 边界防溢出保护 (根据当前所在屏幕的边界计算)
+            if win_x + self.width() > screen_geometry.right():
+                win_x = screen_geometry.right() - self.width() - 15
+            if win_y + self.height() > screen_geometry.bottom():
+                win_y = screen_geometry.bottom() - self.height() - 15
+                
+            if not self.isVisible():
+                self.setWindowOpacity(0.0)
+                self.move(win_x, win_y)
+                self.show()
+                self.fade_anim.start()
+            else:
+                # 如果窗口已经可见，直接移动，不播放淡入动画 (防止闪烁)
+                self.move(win_x, win_y)
+                self.show()
         else:
-            # 如果窗口已经可见，直接移动，不播放淡入动画 (防止闪烁)
-            self.move(win_x, win_y)
             self.show()
             
         QTimer.singleShot(50, self.nuke_activate_window)
@@ -389,48 +415,46 @@ class FloatingWindow(QWidget):
         
         # 结果面板渲染为内嵌风格卡片
         card_bg = self.html_vars.get("card_bg")
+        placeholder = self.html_vars.get('placeholder')
         html = f"<div style='background-color: {card_bg}; padding: 10px; border-radius: 8px;'>"
         
-        # 豆包模块
-        if ai_enabled and (doubao_loading or doubao):
-            if phonetic:
-                pb = self.html_vars.get('phonetic_bg')
-                pt = self.html_vars.get('phonetic_text')
-                html += f"<div style='margin-bottom: 8px;'><span style='color:{pt}; font-size:12px; background-color: {pb}; padding: 2px 6px; border-radius: 4px;'>{phonetic}</span></div>"
-            
-            ai_title_color = self.html_vars.get('ai_title')
-            html += f"<div style='color:{ai_title_color}; font-weight:bold; font-size:12px; margin-bottom: 6px;'>✨ 豆包 AI</div>"
-            
-            if doubao_loading and not doubao:
-                placeholder = self.html_vars.get('placeholder')
-                html += f"<div style='margin-bottom: 12px; color: {placeholder}; font-style: italic;'>AI 思考中...</div>"
-            else:
-                html += f"<div style='margin-bottom: 12px;'>{doubao}</div>"
+        # --- 豆包模块 (始终显示) ---
+        if phonetic:
+            pb = self.html_vars.get('phonetic_bg')
+            pt = self.html_vars.get('phonetic_text')
+            html += f"<div style='margin-bottom: 8px;'><span style='color:{pt}; font-size:12px; background-color: {pb}; padding: 2px 6px; border-radius: 4px;'>{phonetic}</span></div>"
         
-        # 谷歌模块
-        if google_loading or google:
-            divider = self.html_vars.get('divider')
-            border_top = f"border-top: 1px solid {divider}; padding-top: 10px;" if (ai_enabled and (doubao_loading or doubao)) else ""
-            html += f"<div style='{border_top}'>"
-            
-            gg_title_color = self.html_vars.get('google_title')
-            html += f"<div style='color:{gg_title_color}; font-weight:bold; font-size:12px; margin-bottom: 6px;'>🌐 谷歌翻译</div>"
-            
-            if google_loading and not google:
-                placeholder = self.html_vars.get('placeholder')
-                html += f"<div style='color: {placeholder}; font-style: italic;'>请求中...</div></div>"
-            else:
-                html += f"<div>{google}</div></div>"
+        ai_title_color = self.html_vars.get('ai_title')
+        html += f"<div style='color:{ai_title_color}; font-weight:bold; font-size:12px; margin-bottom: 6px;'>✨ 豆包 AI</div>"
         
+        if not ai_enabled:
+            html += f"<div style='margin-bottom: 12px; color: {placeholder}; font-style: italic;'>暂未配置 API Key</div>"
+        elif doubao_loading and not doubao:
+            html += f"<div style='margin-bottom: 12px; color: {placeholder}; font-style: italic;'>AI 思考中...</div>"
+        else:
+            html += f"<div style='margin-bottom: 12px;'>{doubao}</div>"
+            
+        # --- 谷歌模块 (始终显示) ---
+        divider = self.html_vars.get('divider')
+        border_top = f"border-top: 1px solid {divider}; padding-top: 10px;"
+        html += f"<div style='{border_top}'>"
+        
+        gg_title_color = self.html_vars.get('google_title')
+        html += f"<div style='color:{gg_title_color}; font-weight:bold; font-size:12px; margin-bottom: 6px;'>🌐 谷歌翻译</div>"
+        
+        if google_loading and not google:
+            html += f"<div style='color: {placeholder}; font-style: italic;'>请求中...</div></div>"
+        else:
+            html += f"<div>{google}</div></div>"
+            
         html += "</div>"
 
         self.result_label.setText(html)
         self.result_label.show()
         self.play_btn.show()
         
-        # 自动调整窗口大小
+        # 自适应扩展大小 (不再强制 resize(1,1)，避免 AI 流式输出时抽搐闪烁)
         self.adjustSize()
-        QTimer.singleShot(10, self.adjustSize)
 
     def update_play_btn_status(self, text):
         if text == "reset":

@@ -101,7 +101,7 @@ class TranslatorWorker(QObject):
             except Exception as e:
                 logger.error(f"豆包 API 请求错误: {e}", exc_info=True)
                 if self._current_task_id == task_id:
-                    results["doubao"] = f"(连接超时或错误: {e})"
+                    results["doubao"] = f"❌ 翻译出错: {e}"
                     refresh_ui({"doubao_loading": False})
             
             refresh_ui({"doubao_loading": False})
@@ -118,7 +118,7 @@ class TranslatorWorker(QObject):
             except Exception as e:
                 logger.error(f"Google 翻译错误: {e}", exc_info=True)
                 if self._current_task_id == task_id:
-                    results["google"] = "(翻译失败)"
+                    results["google"] = f"❌ 翻译出错: {e}"
             
             refresh_ui({"google_loading": False})
 
