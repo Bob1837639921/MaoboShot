@@ -67,7 +67,8 @@ def play_voice_worker(text, status_signal=None):
                     "--no-terminal", 
                     "--force-window=no", 
                     "--audio-buffer=0.5",     # 给云端流媒体充足的缓冲
-                    "--af=lavfi=[loudnorm]",  # 使用ffmpeg响度标准化滤镜，让人声更饱满清晰
+                    "--volume=130",           # 强行放大基础音量
+                    "--af=drc=2:0.25",        # 动态范围压缩，防止爆音的同时提亮小声音
                     "-"
                 ],
                 stdin=subprocess.PIPE,
@@ -83,7 +84,7 @@ def play_voice_worker(text, status_signal=None):
                     text=safe_text_for_speech, 
                     voice=voice_name,
                     rate="+0%",
-                    volume="+10%",
+                    volume="+50%",
                     pitch="+0Hz"
                 )
                 first_chunk = True
@@ -141,7 +142,14 @@ def play_voice_worker(text, status_signal=None):
                 _remove_process(p_gen)
                 
                 if temp_wav.exists():
-                    cmd_play = [str(MPV_EXE), "--no-terminal", "--force-window=no", "--audio-buffer=0.2"]
+                    cmd_play = [
+                        str(MPV_EXE), 
+                        "--no-terminal", 
+                        "--force-window=no", 
+                        "--audio-buffer=0.2",
+                        "--volume=130",       # 本地引擎也放大基础音量
+                        "--af=drc=2:0.25"     # 加上防爆音动态压缩
+                    ]
                     if silence_wav.exists():
                         cmd_play.append(str(silence_wav))
                     cmd_play.append(str(temp_wav))
