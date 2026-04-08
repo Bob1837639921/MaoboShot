@@ -68,7 +68,7 @@ def play_voice_worker(text, status_signal=None):
                     "--force-window=no", 
                     "--audio-buffer=0.5",     # 给云端流媒体充足的缓冲
                     "--volume=130",           # 强行放大基础音量
-                    "--af=drc=2:0.25",        # 动态范围压缩，防止爆音的同时提亮小声音
+                    "--af=acompressor",       # 使用 ffmpeg 内置的音频压缩器防爆音
                     "-"
                 ],
                 stdin=subprocess.PIPE,
@@ -148,7 +148,7 @@ def play_voice_worker(text, status_signal=None):
                         "--force-window=no", 
                         "--audio-buffer=0.2",
                         "--volume=130",       # 本地引擎也放大基础音量
-                        "--af=drc=2:0.25"     # 加上防爆音动态压缩
+                        "--af=acompressor"    # 加上防爆音动态压缩
                     ]
                     if silence_wav.exists():
                         cmd_play.append(str(silence_wav))
