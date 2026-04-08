@@ -83,7 +83,7 @@ def play_voice_worker(text, status_signal=None):
                 communicate = edge_tts.Communicate(
                     text=safe_text_for_speech, 
                     voice=voice_name,
-                    rate="+0%",
+                    rate="-10%",
                     volume="+50%",
                     pitch="+0Hz"
                 )
@@ -134,7 +134,7 @@ def play_voice_worker(text, status_signal=None):
             safe_text = "，" + text
             
             if PIPER_EXE.exists():
-                cmd_gen = [str(PIPER_EXE), "--model", str(current_model), "--output_file", str(temp_wav)]
+                cmd_gen = [str(PIPER_EXE), "--model", str(current_model), "--length_scale", "1.15", "--output_file", str(temp_wav)]
                 p_gen = subprocess.Popen(cmd_gen, stdin=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
                 _add_process(p_gen)
                 
