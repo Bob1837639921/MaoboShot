@@ -52,6 +52,16 @@ class SettingsWindow(QDialog):
         ep_layout.addWidget(self.ep_input)
         layout.addLayout(ep_layout)
 
+        # 语音引擎选择
+        self.tts_combo = QComboBox()
+        self.tts_combo.addItems(["☁️ 纯云端语音 (发音纯正/依赖网络)", "⚡ 混合语音 (短文本极速本地响应)"])
+        
+        tts_layout = QVBoxLayout()
+        tts_layout.setSpacing(5)
+        tts_layout.addWidget(QLabel("🔊 语音合成引擎:"))
+        tts_layout.addWidget(self.tts_combo)
+        layout.addLayout(tts_layout)
+
         # 主题选择
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["🌙 暗色主题 (Dark)", "☀️ 浅色主题 (Light)"])
@@ -85,6 +95,12 @@ class SettingsWindow(QDialog):
         self.key_input.setText(config.get("DOUBAO_API_KEY", ""))
         self.ep_input.setText(config.get("DOUBAO_MODEL_EP", ""))
         
+        use_local_tts = config.get("USE_LOCAL_TTS", True)
+        if use_local_tts:
+            self.tts_combo.setCurrentIndex(1)
+        else:
+            self.tts_combo.setCurrentIndex(0)
+            
         theme = config.get("THEME", "dark")
         if hasattr(self, 'theme_combo'):
             if theme == "light":
@@ -116,10 +132,12 @@ class SettingsWindow(QDialog):
 
     def save_settings(self):
         theme_val = "light" if (hasattr(self, 'theme_combo') and self.theme_combo.currentIndex() == 1) else "dark"
+        use_local_tts_val = (self.tts_combo.currentIndex() == 1)
         new_config = {
             "DOUBAO_API_KEY": self.key_input.text().strip(),
             "DOUBAO_MODEL_EP": self.ep_input.text().strip(),
-            "THEME": theme_val
+            "THEME": theme_val,
+            "USE_LOCAL_TTS": use_local_tts_val
         }
         save_app_config(new_config)
         QMessageBox.information(self, "成功", "设置已保存，立即生效！")

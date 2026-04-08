@@ -5,7 +5,7 @@ import wave
 import re
 import threading
 import edge_tts
-from core.config import logger, MPV_EXE, PIPER_EXE, PIPER_DIR, HYBRID_THRESHOLD
+from core.config import logger, MPV_EXE, PIPER_EXE, PIPER_DIR, HYBRID_THRESHOLD, load_app_config
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -44,17 +44,32 @@ def play_voice_worker(text, status_signal=None):
         if status_signal:
             status_signal.emit(msg)
 
-    use_cloud = len(text) > HYBRID_THRESHOLD
+    # 我们直接把标点符号前缀的逻辑干掉，因为底层拼接已经足够可靠了，且避免前缀被Piper误伤
+    safe_text_for_speech = text
+    
+    config = load_app_config()
+    use_local_tts = config.get("USE_LOCAL_TTS", True)
+
+    use_cloud = len(text) > HYBRID_THRESHOLD or not use_local_tts
 
     try:
         send_status("⏳ 准备中...")
         if use_cloud:
             send_status("☁️ 云端连接...")
-            voice_name = "zh-CN-XiaoxiaoNeural"
+            # 智能判断语言并选择最顶级的发音人
+            has_chinese_global = bool(re.search(r'[\u4e00-\u9fff]', text))
+            voice_name = "zh-CN-XiaoxiaoNeural" if has_chinese_global else "en-US-AriaNeural"
             
-            # 启动 mpv 接收 stdin 数据
+            # 启动 mpv 接收 stdin 数据，并加上音频增强参数
             player_process = subprocess.Popen(
-                [str(MPV_EXE), "--no-terminal", "--force-window=no", "-"],
+                [
+                    str(MPV_EXE), 
+                    "--no-terminal", 
+                    "--force-window=no", 
+                    "--audio-buffer=0.5",     # 给云端流媒体充足的缓冲
+                    "--af=lavfi=[loudnorm]",  # 使用ffmpeg响度标准化滤镜，让人声更饱满清晰
+                    "-"
+                ],
                 stdin=subprocess.PIPE,
                 creationflags=CREATE_NO_WINDOW,
                 stdout=subprocess.DEVNULL,
@@ -64,7 +79,13 @@ def play_voice_worker(text, status_signal=None):
 
             async def stream_edge():
                 send_status("✨ AI合成中...")
-                communicate = edge_tts.Communicate(text, voice_name)
+                communicate = edge_tts.Communicate(
+                    text=safe_text_for_speech, 
+                    voice=voice_name,
+                    rate="+0%",
+                    volume="+10%",
+                    pitch="+0Hz"
+                )
                 first_chunk = True
                 
                 try:
