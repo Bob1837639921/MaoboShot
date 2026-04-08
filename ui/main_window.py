@@ -5,7 +5,7 @@ import ctypes
 import pyperclip
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton,
                                QFrame, QSystemTrayIcon, QMenu, QStyle, QApplication, QGraphicsDropShadowEffect)
-from PySide6.QtCore import Qt, Signal, Slot, QTimer, QThread, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QThread, QPropertyAnimation, QEasingCurve, QEvent
 from PySide6.QtGui import QCursor, QAction, QIcon, QColor
 from ui.settings_window import SettingsWindow
 
@@ -49,7 +49,36 @@ class FloatingWindow(QWidget):
         self._init_workers()
         self._init_hotkeys()
 
-        self.input_edit.textChanged.connect(self.on_input_changed)
+        # 移除之前的实时监控，改为安装事件过滤器监听 Enter 键
+        # self.input_edit.textChanged.connect(self.on_input_changed)
+        self.input_edit.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj == self.input_edit and event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                # 检查是否同时按下了 Shift (如果有 Shift 则是换行，不触发翻译)
+                if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                    self.on_translate_clicked()
+                    return True # 拦截事件，防止输入换行符
+        return super().eventFilter(obj, event)
+
+    def on_translate_clicked(self):
+        text = self.input_edit.toPlainText().strip()
+        if text:
+            self._last_translated_text = text
+            self.current_text_for_speech = text
+            
+            # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
+            self.result_label.hide()
+            self.play_btn.hide()
+            self.resize(1, 1)
+            self.adjustSize()
+            
+            self.request_translation_signal.emit(text)
+
+    # 保留原有的 on_input_changed 方法名称避免其它地方调用报错，重定向到点击逻辑
+    def on_input_changed(self):
+        pass
 
     def _init_ui(self):
         self.main_layout = QVBoxLayout()
@@ -87,9 +116,22 @@ class FloatingWindow(QWidget):
         self.header_layout.addWidget(self.close_btn)
 
         # === 输入框 ===
+        self.input_layout = QHBoxLayout()
+        self.input_layout.setSpacing(8)
         self.input_edit = QTextEdit()
         self.input_edit.setPlaceholderText("手动输入 / 划词复制 / Alt+Z 截图...")
         self.input_edit.setMaximumHeight(80)
+        self.input_edit.setMinimumHeight(80)
+        
+        # === 立即翻译按钮 ===
+        self.translate_btn = QPushButton("翻译\n↵")
+        self.translate_btn.setToolTip("快捷键: Enter (换行请用 Shift+Enter)")
+        self.translate_btn.setFixedSize(60, 80)
+        self.translate_btn.setCursor(Qt.PointingHandCursor)
+        self.translate_btn.clicked.connect(self.on_translate_clicked)
+        
+        self.input_layout.addWidget(self.input_edit)
+        self.input_layout.addWidget(self.translate_btn)
 
         # === 结果展示 ===
         self.result_label = QLabel()
@@ -104,7 +146,7 @@ class FloatingWindow(QWidget):
         self.play_btn.clicked.connect(self.play_audio)
 
         self.content_layout.addLayout(self.header_layout)
-        self.content_layout.addWidget(self.input_edit)
+        self.content_layout.addLayout(self.input_layout)
         self.content_layout.addWidget(self.result_label)
         self.content_layout.addWidget(self.play_btn)
         
@@ -227,6 +269,20 @@ class FloatingWindow(QWidget):
             QPushButton:pressed {{ background-color: #1257b5; }}
             QPushButton:disabled {{ background-color: #555555; color: #aaaaaa; }}
         """)
+
+        self.translate_btn.setStyleSheet(f"""
+            QPushButton {{ 
+                background-color: {play_btn_bg}; 
+                color: white; 
+                border: none; 
+                border-radius: 8px; 
+                font-family: 'Segoe UI', 'Microsoft YaHei'; 
+                font-size: 14px;
+                font-weight: bold; 
+            }} 
+            QPushButton:hover {{ background-color: {play_btn_hover}; }}
+            QPushButton:pressed {{ background-color: #1257b5; }}
+        """)
         
         if hasattr(self, '_last_results') and self._last_results:
             self.update_translation(self._last_results)
@@ -257,6 +313,8 @@ class FloatingWindow(QWidget):
             self.tray_icon.setIcon(QIcon(str(icon_file)))
         else:
             self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
+            
+        self.tray_icon.activated.connect(self.on_tray_icon_activated)
         
         self.tray_menu = QMenu()
         show_action = QAction("显示主界面 (Alt+Q)", self)
@@ -276,6 +334,11 @@ class FloatingWindow(QWidget):
         self.tray_menu.addAction(quit_action)
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.show()
+
+    def on_tray_icon_activated(self, reason):
+        from PySide6.QtWidgets import QSystemTrayIcon
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.handle_show_window()
 
     def show_settings(self):
         dialog = SettingsWindow(self)
@@ -455,6 +518,9 @@ class FloatingWindow(QWidget):
         
         # 自适应扩展大小 (不再强制 resize(1,1)，避免 AI 流式输出时抽搐闪烁)
         self.adjustSize()
+        # 加入微小延迟的自适应，确保富文本高度计算完成后能正确撑开窗口，防止按钮遮挡底部文字
+        QTimer.singleShot(10, self.adjustSize)
+        QTimer.singleShot(50, self.update)
 
     def update_play_btn_status(self, text):
         if text == "reset":
@@ -490,12 +556,25 @@ class FloatingWindow(QWidget):
                     # 🛡️ 守卫条件：
                     # 1. 如果窗口可见，且 (处于激活状态 OR 鼠标正悬停在窗口上)，忽略！(防止内部框选触发)
                     # 2. 如果正处于强制冷却期内，忽略！
-                    is_under_mouse = self.frameGeometry().contains(QCursor.pos())
-                    is_active = self.isActiveWindow() or self.hasFocus()
+                    is_under_mouse = self.underMouse()
+                    if not is_under_mouse:
+                        # 兼容多屏幕 DPI 的全局坐标检测
+                        pos = QCursor.pos()
+                        global_top_left = self.mapToGlobal(self.rect().topLeft())
+                        global_bottom_right = self.mapToGlobal(self.rect().bottomRight())
+                        if global_top_left.x() <= pos.x() <= global_bottom_right.x() and global_top_left.y() <= pos.y() <= global_bottom_right.y():
+                            is_under_mouse = True
+
+                    is_active = self.isActiveWindow() or self.hasFocus() or self.input_edit.hasFocus()
+                    from PySide6.QtWidgets import QApplication
+                    if QApplication.activeWindow() == self:
+                        is_active = True
                     
                     if (self.isVisible() and (is_active or is_under_mouse)) or time.time() < self._clipboard_suppress_until:
                         pass
                     else:
+                        # 记录事件发生瞬间的 Ctrl 键物理状态 (0x11 = VK_CONTROL)
+                        self._ctrl_pressed_during_copy = bool(ctypes.windll.user32.GetAsyncKeyState(0x11) & 0x8000)
                         QTimer.singleShot(50, self._process_clipboard)
 
         except Exception as e:
@@ -524,6 +603,12 @@ class FloatingWindow(QWidget):
 
         # ⬇️ 双击唤醒逻辑
         if time_since_last <= 0.6 and text == self.last_clipboard_text:
+            # 🛡️ 终极防御：防御第三方划词软件 (如词典) 拦截鼠标双击并偷偷恢复剪贴板造成的幽灵弹窗！
+            # 如果是人类真实的双击 Ctrl+C，此时 Ctrl 键必定是按下的。如果没按，说明是后台脚本作祟，当作噪音直接忽略！
+            if not getattr(self, '_ctrl_pressed_during_copy', False):
+                self.last_clipboard_time = current_time
+                return
+
             # 成功触发双击复制 (间隔 0.15 ~ 0.6秒，且内容一致)
             if text != getattr(self, '_last_translated_text', ''):
                 # 文本是新的，触发网络翻译请求
