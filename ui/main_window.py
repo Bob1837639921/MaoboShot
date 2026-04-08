@@ -546,7 +546,41 @@ class FloatingWindow(QWidget):
         self.adjustSize()
         # 加入微小延迟的自适应，确保富文本高度计算完成后能正确撑开窗口，防止按钮遮挡底部文字
         QTimer.singleShot(10, self.adjustSize)
+        QTimer.singleShot(20, self._ensure_visible_on_screen)
         QTimer.singleShot(50, self.update)
+
+    def _ensure_visible_on_screen(self):
+        """翻译结果撑开窗口后，检查是否溢出屏幕底端或右端，如果溢出则自动上移/左移"""
+        from PySide6.QtGui import QGuiApplication
+        screen = QGuiApplication.screenAt(self.pos())
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+
+        current_x = self.x()
+        current_y = self.y()
+        win_width = self.width()
+        win_height = self.height()
+
+        new_x = current_x
+        new_y = current_y
+
+        # 防溢出：如果窗口底部超出屏幕底部，自动向上推
+        if current_y + win_height > screen_geometry.bottom():
+            new_y = screen_geometry.bottom() - win_height - 15
+            
+        # 防溢出：如果窗口右侧超出屏幕右侧，自动向左推
+        if current_x + win_width > screen_geometry.right():
+            new_x = screen_geometry.right() - win_width - 15
+            
+        # 兜底保护：不能超出屏幕左上角
+        if new_x < screen_geometry.left():
+            new_x = screen_geometry.left() + 15
+        if new_y < screen_geometry.top():
+            new_y = screen_geometry.top() + 15
+
+        if new_x != current_x or new_y != current_y:
+            self.move(new_x, new_y)
 
     def update_play_btn_status(self, text):
         if text == "reset":
