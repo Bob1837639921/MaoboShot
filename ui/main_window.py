@@ -318,7 +318,7 @@ class FloatingWindow(QWidget):
         
         self.tray_menu = QMenu()
         show_action = QAction("显示主界面 (Alt+Q)", self)
-        show_action.triggered.connect(self.handle_show_window)
+        show_action.triggered.connect(lambda: self.handle_show_window(reset=True))
         snip_action = QAction("截图翻译 (Alt+Z)", self)
         snip_action.triggered.connect(self.start_snipping)
         settings_action = QAction("⚙️ 设置", self)
@@ -338,7 +338,7 @@ class FloatingWindow(QWidget):
     def on_tray_icon_activated(self, reason):
         from PySide6.QtWidgets import QSystemTrayIcon
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.handle_show_window()
+            self.handle_show_window(reset=True)
 
     def show_settings(self):
         dialog = SettingsWindow(self)
@@ -420,9 +420,21 @@ class FloatingWindow(QWidget):
         if popup:
             self.handle_show_window(ignore_move=ignore_move)
 
-    def handle_show_window(self, ignore_move=False):
+    def handle_show_window(self, ignore_move=False, reset=False):
         self._clipboard_suppress_until = time.time() + 0.8
         
+        # 强制清空内容，恢复初始状态
+        if reset:
+            self.input_edit.blockSignals(True)
+            self.input_edit.clear()
+            self.input_edit.blockSignals(False)
+            self.current_text_for_speech = ""
+            self._last_translated_text = ""
+            self.result_label.hide()
+            self.play_btn.hide()
+            self.resize(1, 1)
+            self.adjustSize()
+
         if not ignore_move or not self.isVisible():
             pos = QCursor.pos()
             
@@ -548,7 +560,7 @@ class FloatingWindow(QWidget):
                 
                 if msg.message == WM_HOTKEY:
                     if msg.wParam == HOTKEY_ID_Q:
-                        self.handle_show_window()
+                        self.handle_show_window(reset=True)
                     elif msg.wParam == HOTKEY_ID_Z:
                         self.start_snipping()
                 
