@@ -488,6 +488,20 @@ class FloatingWindow(QWidget):
         google_loading = results.get("google_loading", False)
         ai_enabled = results.get("ai_enabled", True)
         
+        # 智能动态音标：如果输入的是中文，没有生成音标，但翻译结果是简短的英文，提取英文的音标
+        if not phonetic:
+            import re
+            try:
+                import eng_to_ipa as ipa
+                eng_result = doubao if (doubao and not doubao_loading) else google
+                # 如果有结果，且结果比较短，且没有中文字符，就试着转音标
+                if eng_result and len(eng_result) < 30 and not re.search(r'[\u4e00-\u9fff]', eng_result):
+                    ph = ipa.convert(eng_result.lower().strip())
+                    if "*" not in ph and ph:
+                        phonetic = f"/{ph}/"
+            except Exception:
+                pass
+
         # 结果面板渲染为内嵌风格卡片
         card_bg = self.html_vars.get("card_bg")
         placeholder = self.html_vars.get('placeholder')
