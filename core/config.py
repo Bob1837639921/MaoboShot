@@ -49,7 +49,9 @@ def load_app_config():
     # 兼容环境变量作为初始回退
     return {
         "DOUBAO_API_KEY": os.getenv("DOUBAO_API_KEY", ""),
-        "DOUBAO_MODEL_EP": os.getenv("DOUBAO_MODEL_EP", "")
+        "DOUBAO_MODEL_EP": os.getenv("DOUBAO_MODEL_EP", ""),
+        "THEME": "light",
+        "USE_LOCAL_TTS": True
     }
 
 def save_app_config(data):
