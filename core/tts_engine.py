@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import tempfile
+import time
 import uuid
 import wave
 import re
@@ -14,6 +15,7 @@ CREATE_NO_WINDOW = 0x08000000
 # 集中管理活跃的子进程，防止僵尸进程
 _active_processes = []
 _process_lock = threading.Lock()
+_pygame_lock = threading.Lock()
 
 def _add_process(p):
     with _process_lock:
@@ -33,6 +35,21 @@ def cleanup_tts_processes():
             except Exception:
                 pass
         _active_processes.clear()
+
+def _play_audio_file(audio_path):
+    """使用 pygame 播放本地音频文件，作为 mpv 不存在时的兜底方案。"""
+    with _pygame_lock:
+        import pygame
+
+        pygame.mixer.init()
+        try:
+            pygame.mixer.music.load(audio_path)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.05)
+            pygame.mixer.music.unload()
+        finally:
+            pygame.mixer.quit()
 
 def play_voice_worker(text, status_signal=None):
     """
@@ -61,24 +78,6 @@ def play_voice_worker(text, status_signal=None):
             # 智能判断语言并选择最顶级的发音人
             has_chinese_global = bool(re.search(r'[\u4e00-\u9fff]', text))
             voice_name = "zh-CN-XiaoxiaoNeural" if has_chinese_global else "en-US-AriaNeural"
-            
-            # 启动 mpv 接收 stdin 数据，并加上音频增强参数
-            player_process = subprocess.Popen(
-                [
-                    str(MPV_EXE), 
-                    "--no-terminal", 
-                    "--force-window=no", 
-                    "--audio-buffer=0.5",     # 给云端流媒体充足的缓冲
-                    "--volume=130",           # 强行放大基础音量
-                    "--af=acompressor",       # 使用 ffmpeg 内置的音频压缩器防爆音
-                    "-"
-                ],
-                stdin=subprocess.PIPE,
-                creationflags=CREATE_NO_WINDOW,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            _add_process(player_process)
 
             async def stream_edge():
                 send_status("✨ AI合成中...")
@@ -90,21 +89,53 @@ def play_voice_worker(text, status_signal=None):
                     pitch="+0Hz"
                 )
                 first_chunk = True
-                
-                try:
-                    async for chunk in communicate.stream():
-                        if chunk["type"] == "audio":
-                            if first_chunk:
-                                send_status("▶️ 开始朗读...")
-                                first_chunk = False
-                            player_process.stdin.write(chunk["data"])
-                            player_process.stdin.flush()
-                except Exception as e:
-                    logger.error(f"Edge TTS 流式传输错误: {e}")
-                finally:
-                    player_process.stdin.close()
-                    player_process.wait()
-                    _remove_process(player_process)
+
+                if MPV_EXE.exists():
+                    # 启动 mpv 接收 stdin 数据，并加上音频增强参数
+                    player_process = subprocess.Popen(
+                        [
+                            str(MPV_EXE),
+                            "--no-terminal",
+                            "--force-window=no",
+                            "--audio-buffer=0.5",     # 给云端流媒体充足的缓冲
+                            "--volume=130",           # 强行放大基础音量
+                            "--af=acompressor",       # 使用 ffmpeg 内置的音频压缩器防爆音
+                            "-"
+                        ],
+                        stdin=subprocess.PIPE,
+                        creationflags=CREATE_NO_WINDOW,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    _add_process(player_process)
+
+                    try:
+                        async for chunk in communicate.stream():
+                            if chunk["type"] == "audio":
+                                if first_chunk:
+                                    send_status("▶️ 开始朗读...")
+                                    first_chunk = False
+                                player_process.stdin.write(chunk["data"])
+                                player_process.stdin.flush()
+                    except Exception as e:
+                        logger.error(f"Edge TTS 流式传输错误: {e}")
+                    finally:
+                        player_process.stdin.close()
+                        player_process.wait()
+                        _remove_process(player_process)
+                else:
+                    send_status("✨ AI合成中...")
+                    cloud_audio = os.path.join(tempfile.gettempdir(), f"maoboshot_edge_{uuid.uuid4().hex}.mp3")
+                    try:
+                        await communicate.save(cloud_audio)
+                        send_status("▶️ 开始朗读...")
+                        _play_audio_file(cloud_audio)
+                    finally:
+                        try:
+                            if os.path.exists(cloud_audio):
+                                os.remove(cloud_audio)
+                        except Exception:
+                            pass
 
             asyncio.run(stream_edge())
 
@@ -157,10 +188,13 @@ def play_voice_worker(text, status_signal=None):
                         cmd_play.append(silence_wav)
                     cmd_play.append(temp_wav)
                     
-                    p_play = subprocess.Popen(cmd_play, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
-                    _add_process(p_play)
-                    p_play.wait()
-                    _remove_process(p_play)
+                    if MPV_EXE.exists():
+                        p_play = subprocess.Popen(cmd_play, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
+                        _add_process(p_play)
+                        p_play.wait()
+                        _remove_process(p_play)
+                    else:
+                        _play_audio_file(temp_wav)
             else:
                 logger.error("❌ 错误：找不到 Piper.exe")
 
