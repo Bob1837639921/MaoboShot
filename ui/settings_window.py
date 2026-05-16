@@ -7,7 +7,7 @@ class SettingsWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("⚙️ 设置 - ManboShot")
-        self.setFixedSize(450, 280)
+        self.setFixedSize(520, 620)
         # 去掉无边框，允许普通窗口操作，但置顶
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.setStyleSheet("""
@@ -62,6 +62,63 @@ class SettingsWindow(QDialog):
         tts_layout.addWidget(self.tts_combo)
         layout.addLayout(tts_layout)
 
+        # AI 语音设置
+        self.ai_tts_provider_combo = QComboBox()
+        self.ai_tts_provider_combo.addItems(["Edge TTS", "小米 MiMo TTS"])
+        ai_provider_layout = QVBoxLayout()
+        ai_provider_layout.setSpacing(5)
+        ai_provider_layout.addWidget(QLabel("🤖 AI 语音提供商:"))
+        ai_provider_layout.addWidget(self.ai_tts_provider_combo)
+        layout.addLayout(ai_provider_layout)
+
+        self.xiaomi_key_input = QLineEdit()
+        self.xiaomi_key_input.setEchoMode(QLineEdit.Password)
+        self.xiaomi_key_input.setPlaceholderText("小米 MiMo / 网关 API Key")
+
+        xiaomi_key_layout = QVBoxLayout()
+        xiaomi_key_layout.setSpacing(5)
+        xiaomi_key_layout.addWidget(QLabel("🔑 小米 TTS API Key:"))
+        xiaomi_key_layout.addWidget(self.xiaomi_key_input)
+        layout.addLayout(xiaomi_key_layout)
+
+        self.xiaomi_base_input = QLineEdit()
+        self.xiaomi_base_input.setPlaceholderText("https://token-plan-cn.xiaomimimo.com/v1")
+
+        xiaomi_base_layout = QVBoxLayout()
+        xiaomi_base_layout.setSpacing(5)
+        xiaomi_base_layout.addWidget(QLabel("🌐 小米 TTS Base URL:"))
+        xiaomi_base_layout.addWidget(self.xiaomi_base_input)
+        layout.addLayout(xiaomi_base_layout)
+
+        xiaomi_model_voice_layout = QHBoxLayout()
+        self.xiaomi_model_input = QLineEdit()
+        self.xiaomi_model_input.setPlaceholderText("mimo-v2-tts")
+        self.xiaomi_voice_combo = QComboBox()
+        self.xiaomi_voice_combo.addItems(["mimo_default", "default_zh", "default_en"])
+
+        model_layout = QVBoxLayout()
+        model_layout.setSpacing(5)
+        model_layout.addWidget(QLabel("🧠 小米 TTS 模型:"))
+        model_layout.addWidget(self.xiaomi_model_input)
+
+        voice_layout = QVBoxLayout()
+        voice_layout.setSpacing(5)
+        voice_layout.addWidget(QLabel("🎙️ 小米 TTS 音色:"))
+        voice_layout.addWidget(self.xiaomi_voice_combo)
+
+        xiaomi_model_voice_layout.addLayout(model_layout)
+        xiaomi_model_voice_layout.addLayout(voice_layout)
+        layout.addLayout(xiaomi_model_voice_layout)
+
+        self.xiaomi_style_input = QLineEdit()
+        self.xiaomi_style_input.setPlaceholderText("可选：开心 / 粤语 / 东北话 / 变慢 / 悄悄话")
+
+        xiaomi_style_layout = QVBoxLayout()
+        xiaomi_style_layout.setSpacing(5)
+        xiaomi_style_layout.addWidget(QLabel("🎭 小米 TTS 风格:"))
+        xiaomi_style_layout.addWidget(self.xiaomi_style_input)
+        layout.addLayout(xiaomi_style_layout)
+
         # 主题选择
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["🌙 暗色主题 (Dark)", "☀️ 浅色主题 (Light)"])
@@ -100,6 +157,16 @@ class SettingsWindow(QDialog):
             self.tts_combo.setCurrentIndex(1)
         else:
             self.tts_combo.setCurrentIndex(0)
+
+        ai_tts_provider = config.get("AI_TTS_PROVIDER", "edge")
+        self.ai_tts_provider_combo.setCurrentIndex(1 if ai_tts_provider == "xiaomi" else 0)
+        self.xiaomi_key_input.setText(config.get("XIAOMI_TTS_API_KEY", ""))
+        self.xiaomi_base_input.setText(config.get("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"))
+        self.xiaomi_model_input.setText(config.get("XIAOMI_TTS_MODEL", "mimo-v2-tts"))
+        voice = config.get("XIAOMI_TTS_VOICE", "mimo_default")
+        voice_index = self.xiaomi_voice_combo.findText(voice)
+        self.xiaomi_voice_combo.setCurrentIndex(voice_index if voice_index >= 0 else 0)
+        self.xiaomi_style_input.setText(config.get("XIAOMI_TTS_STYLE", ""))
             
         theme = config.get("THEME", "dark")
         if hasattr(self, 'theme_combo'):
@@ -133,11 +200,18 @@ class SettingsWindow(QDialog):
     def save_settings(self):
         theme_val = "light" if (hasattr(self, 'theme_combo') and self.theme_combo.currentIndex() == 1) else "dark"
         use_local_tts_val = (self.tts_combo.currentIndex() == 1)
+        ai_tts_provider = "xiaomi" if self.ai_tts_provider_combo.currentIndex() == 1 else "edge"
         new_config = {
             "DOUBAO_API_KEY": self.key_input.text().strip(),
             "DOUBAO_MODEL_EP": self.ep_input.text().strip(),
             "THEME": theme_val,
-            "USE_LOCAL_TTS": use_local_tts_val
+            "USE_LOCAL_TTS": use_local_tts_val,
+            "AI_TTS_PROVIDER": ai_tts_provider,
+            "XIAOMI_TTS_API_KEY": self.xiaomi_key_input.text().strip(),
+            "XIAOMI_TTS_BASE_URL": self.xiaomi_base_input.text().strip() or "https://token-plan-cn.xiaomimimo.com/v1",
+            "XIAOMI_TTS_MODEL": self.xiaomi_model_input.text().strip() or "mimo-v2-tts",
+            "XIAOMI_TTS_VOICE": self.xiaomi_voice_combo.currentText(),
+            "XIAOMI_TTS_STYLE": self.xiaomi_style_input.text().strip()
         }
         save_app_config(new_config)
         QMessageBox.information(self, "成功", "设置已保存，立即生效！")

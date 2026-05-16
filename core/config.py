@@ -52,7 +52,13 @@ DEFAULT_CONFIG = {
     "DOUBAO_API_KEY": os.getenv("DOUBAO_API_KEY", ""),
     "DOUBAO_MODEL_EP": os.getenv("DOUBAO_MODEL_EP", ""),
     "THEME": "light",
-    "USE_LOCAL_TTS": True
+    "USE_LOCAL_TTS": True,
+    "AI_TTS_PROVIDER": "edge",
+    "XIAOMI_TTS_API_KEY": os.getenv("XIAOMI_TTS_API_KEY", ""),
+    "XIAOMI_TTS_BASE_URL": os.getenv("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"),
+    "XIAOMI_TTS_MODEL": os.getenv("XIAOMI_TTS_MODEL", "mimo-v2-tts"),
+    "XIAOMI_TTS_VOICE": os.getenv("XIAOMI_TTS_VOICE", "mimo_default"),
+    "XIAOMI_TTS_STYLE": os.getenv("XIAOMI_TTS_STYLE", "")
 }
 
 def load_app_config():

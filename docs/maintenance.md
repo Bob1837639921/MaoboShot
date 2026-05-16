@@ -20,6 +20,12 @@
 | `DOUBAO_MODEL_EP` | 豆包模型接入点 |
 | `THEME` | `light` 或 `dark` |
 | `USE_LOCAL_TTS` | 是否启用短文本本地 Piper TTS |
+| `AI_TTS_PROVIDER` | AI 语音提供商，`edge` 或 `xiaomi` |
+| `XIAOMI_TTS_API_KEY` | 小米 MiMo TTS / 兼容网关 Key |
+| `XIAOMI_TTS_BASE_URL` | 小米 MiMo OpenAI 兼容接口地址 |
+| `XIAOMI_TTS_MODEL` | 小米 TTS 模型，默认 `mimo-v2-tts` |
+| `XIAOMI_TTS_VOICE` | 小米 TTS 音色，如 `mimo_default` |
+| `XIAOMI_TTS_STYLE` | 可选语音风格 |
 
 ## 资源路径
 
@@ -65,6 +71,15 @@ python build_exe.py --deploy-dir D:\Release\ManboShot
 - 不要提交 `config.json`、`.env`、日志文件或任何真实密钥。
 - 如果密钥曾经进入 Git 历史，应立即在服务商控制台轮换。
 - 翻译结果进入 UI 前会做 HTML 转义，后续新增富文本片段时也要保持这个规则。
+
+## AI 语音
+
+云端朗读由 `AI_TTS_PROVIDER` 决定：
+
+- `edge`：使用 `edge-tts`。
+- `xiaomi`：请求 OpenAI 兼容的 MiMo TTS 接口。
+
+小米 TTS 当前发送到 `{XIAOMI_TTS_BASE_URL}/chat/completions`，请求体包含 `model`、`messages` 和 `audio.format/voice`。响应侧兼容直接音频、音频 URL 和常见 base64 字段。若供应商调整返回结构，优先扩展 `core/tts_engine.py` 中的 `_find_audio_payload()`。
 
 ## 退出清理
 

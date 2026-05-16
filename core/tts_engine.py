@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import subprocess
 import tempfile
@@ -7,7 +8,9 @@ import uuid
 import wave
 import re
 import threading
+from urllib.parse import urljoin
 import edge_tts
+import requests
 from core.config import logger, MPV_EXE, PIPER_EXE, PIPER_DIR, HYBRID_THRESHOLD, load_app_config
 
 CREATE_NO_WINDOW = 0x08000000
@@ -51,6 +54,106 @@ def _play_audio_file(audio_path):
         finally:
             pygame.mixer.quit()
 
+def _looks_like_base64(value):
+    if not isinstance(value, str) or len(value) < 80:
+        return False
+    clean = value.strip()
+    if clean.startswith("data:") and ";base64," in clean:
+        return True
+    return bool(re.fullmatch(r"[A-Za-z0-9+/=\s]+", clean))
+
+def _decode_audio_base64(value):
+    clean = value.strip()
+    if clean.startswith("data:") and ";base64," in clean:
+        clean = clean.split(";base64,", 1)[1]
+    return base64.b64decode(clean)
+
+def _find_audio_payload(data):
+    if isinstance(data, dict):
+        for key in ("audio", "b64_json", "base64", "audio_base64", "data", "url"):
+            value = data.get(key)
+            if isinstance(value, str):
+                if key == "url" or value.startswith(("http://", "https://")):
+                    return ("url", value)
+                if _looks_like_base64(value):
+                    return ("base64", value)
+        for value in data.values():
+            found = _find_audio_payload(value)
+            if found:
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = _find_audio_payload(item)
+            if found:
+                return found
+    return None
+
+def _play_xiaomi_tts(text, config, send_status):
+    api_key = config.get("XIAOMI_TTS_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("未配置小米 MiMo TTS API Key")
+
+    base_url = config.get("XIAOMI_TTS_BASE_URL", "https://api.xiaomimimo.com/v1").rstrip("/") + "/"
+    endpoint = urljoin(base_url, "chat/completions")
+    model = config.get("XIAOMI_TTS_MODEL", "mimo-v2-tts").strip() or "mimo-v2-tts"
+    voice = config.get("XIAOMI_TTS_VOICE", "mimo_default").strip() or "mimo_default"
+    style = config.get("XIAOMI_TTS_STYLE", "").strip()
+    spoken_text = f"<style>{style}</style>{text}" if style else text
+
+    send_status("✨ 小米合成中...")
+    response = requests.post(
+        endpoint,
+        headers={
+            "api-key": api_key,
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": model,
+            "messages": [
+                {"role": "user", "content": "请将 assistant 消息合成为自然语音。"},
+                {"role": "assistant", "content": spoken_text}
+            ],
+            "audio": {
+                "format": "wav",
+                "voice": voice
+            }
+        },
+        timeout=45
+    )
+
+    content_type = response.headers.get("content-type", "")
+    if response.status_code >= 400:
+        raise RuntimeError(f"小米 TTS 请求失败 {response.status_code}: {response.text[:500]}")
+
+    audio_path = os.path.join(tempfile.gettempdir(), f"maoboshot_xiaomi_{uuid.uuid4().hex}.wav")
+    try:
+        if content_type.startswith("audio/"):
+            audio_bytes = response.content
+        else:
+            payload = response.json()
+            found = _find_audio_payload(payload)
+            if not found:
+                raise RuntimeError(f"小米 TTS 响应中未找到音频字段: {str(payload)[:500]}")
+            kind, value = found
+            if kind == "url":
+                audio_response = requests.get(value, timeout=45)
+                audio_response.raise_for_status()
+                audio_bytes = audio_response.content
+            else:
+                audio_bytes = _decode_audio_base64(value)
+
+        with open(audio_path, "wb") as f:
+            f.write(audio_bytes)
+        send_status("▶️ 开始朗读...")
+        _play_audio_file(audio_path)
+    finally:
+        try:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+        except Exception:
+            pass
+
 def play_voice_worker(text, status_signal=None):
     """
     运行在子线程中的TTS逻辑。
@@ -68,6 +171,7 @@ def play_voice_worker(text, status_signal=None):
     
     config = load_app_config()
     use_local_tts = config.get("USE_LOCAL_TTS", True)
+    ai_tts_provider = config.get("AI_TTS_PROVIDER", "edge")
 
     use_cloud = len(text) > HYBRID_THRESHOLD or not use_local_tts
 
@@ -75,6 +179,10 @@ def play_voice_worker(text, status_signal=None):
         send_status("⏳ 准备中...")
         if use_cloud:
             send_status("☁️ 云端连接...")
+            if ai_tts_provider == "xiaomi":
+                _play_xiaomi_tts(safe_text_for_speech, config, send_status)
+                return
+
             # 智能判断语言并选择最顶级的发音人
             has_chinese_global = bool(re.search(r'[\u4e00-\u9fff]', text))
             voice_name = "zh-CN-XiaoxiaoNeural" if has_chinese_global else "en-US-AriaNeural"

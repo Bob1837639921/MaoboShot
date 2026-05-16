@@ -77,6 +77,23 @@ $env:MAOBOSHOT_TOOL_DIR="D:\Tools\maoboshot\mpv"
 python main.py
 ```
 
+### 4. AI 语音设置
+
+设置窗口支持选择 AI 语音提供商：
+
+- **Edge TTS**：默认云端语音，不需要额外 Key。
+- **小米 MiMo TTS**：兼容 OpenAI 接口协议，可配置 Base URL、API Key、模型、音色和风格。
+
+小米 MiMo 常用配置：
+
+```text
+Base URL: https://token-plan-cn.xiaomimimo.com/v1
+Model: mimo-v2-tts
+Voice: mimo_default / default_zh / default_en
+```
+
+真实 Key 只保存在 `%APPDATA%\MaoboShot\config.json`，不要提交到仓库。
+
 ---
 
 ## ⌨️ 快捷键说明 (Hotkeys)
