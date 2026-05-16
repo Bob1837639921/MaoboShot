@@ -60,17 +60,17 @@ ManboShot/
 ### 3. 配置 API Key
 1. 直接运行程序 `python main.py`。
 2. 软件会在右下角系统托盘静默运行，右键点击 ✨ 星星图标，选择 **「⚙️ 设置」**。
-3. 填入你的火山引擎（豆包）API Key 与模型接入点 (Endpoint)，并选择你喜欢的主题。
+3. 在设置窗口里填入火山引擎（豆包）API Key 与模型接入点 (Endpoint)，并选择你喜欢的主题。
 
 > *如果留空不填 API Key，软件将自动降级为“纯 Google 翻译”模式，界面依然完美适配。*
 
-配置会保存到当前用户目录下：
+设置窗口会自动把配置保存到当前用户目录下：
 
 ```text
 %APPDATA%\MaoboShot\config.json
 ```
 
-仓库中的 `config.example.json` 只作为配置模板，不要把真实 API Key 提交到 Git。开发或便携运行时，如果 `mpv` 工具不在项目根目录，可以通过环境变量指定：
+仓库中的 `config.example.json` 只说明字段结构。不要手动维护项目根目录的 `config.json`，也不要把真实 API Key 提交到 Git。开发或便携运行时，如果 `mpv` 工具不在项目根目录，可以通过环境变量指定：
 
 ```powershell
 $env:MAOBOSHOT_TOOL_DIR="D:\Tools\maoboshot\mpv"
@@ -92,7 +92,7 @@ Model: mimo-v2-tts
 Voice: mimo_default / default_zh / default_en
 ```
 
-真实 Key 只保存在 `%APPDATA%\MaoboShot\config.json`，不要提交到仓库。
+真实 Key 只通过设置窗口填写，由软件保存到用户目录；不要手动写入或提交项目文件。
 
 ---
 

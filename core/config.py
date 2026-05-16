@@ -47,7 +47,6 @@ PIPER_MODEL = PIPER_DIR / "zh_CN-huayan-medium.onnx"
 # --- 配置管理 (支持动态设置) ---
 USER_DATA_DIR = _user_data_dir()
 CONFIG_FILE = USER_DATA_DIR / "config.json"
-LEGACY_CONFIG_FILE = APP_DIR / "config.json"
 DEFAULT_CONFIG = {
     "DOUBAO_API_KEY": os.getenv("DOUBAO_API_KEY", ""),
     "DOUBAO_MODEL_EP": os.getenv("DOUBAO_MODEL_EP", ""),
@@ -62,10 +61,9 @@ DEFAULT_CONFIG = {
 }
 
 def load_app_config():
-    config_path = CONFIG_FILE if CONFIG_FILE.exists() else LEGACY_CONFIG_FILE
-    if config_path.exists():
+    if CONFIG_FILE.exists():
         try:
-            with open(config_path, 'r', encoding='utf-8-sig') as f:
+            with open(CONFIG_FILE, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             merged = dict(DEFAULT_CONFIG)
             merged.update(data)

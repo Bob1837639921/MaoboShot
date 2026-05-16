@@ -4,13 +4,13 @@
 
 ## 配置文件
 
-真实用户配置不再放在仓库根目录，而是写入：
+真实用户配置只由设置窗口写入用户目录：
 
 ```text
 %APPDATA%\MaoboShot\config.json
 ```
 
-仓库中的 `config.example.json` 是模板文件，可以复制字段结构，但不要填写真实 API Key 后提交。
+仓库中的 `config.example.json` 只说明字段结构。程序不再回退读取项目根目录的 `config.json`，避免开发者误以为需要手动改项目文件。
 
 配置字段：
 
