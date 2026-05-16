@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import ctypes
+import html as html_utils
 import pyperclip
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton,
                                QFrame, QSystemTrayIcon, QMenu, QStyle, QApplication, QGraphicsDropShadowEffect)
@@ -75,10 +76,6 @@ class FloatingWindow(QWidget):
             self.adjustSize()
             
             self.request_translation_signal.emit(text)
-
-    # 保留原有的 on_input_changed 方法名称避免其它地方调用报错，重定向到点击逻辑
-    def on_input_changed(self):
-        pass
 
     def _init_ui(self):
         self.main_layout = QVBoxLayout()
@@ -480,9 +477,9 @@ class FloatingWindow(QWidget):
     def update_translation(self, results):
         self._last_results = results
         
-        doubao = results.get("doubao", "")
-        google = results.get("google", "")
-        phonetic = results.get("phonetic", "")
+        doubao = html_utils.escape(results.get("doubao", "") or "").replace("\n", "<br>")
+        google = html_utils.escape(results.get("google", "") or "").replace("\n", "<br>")
+        phonetic = html_utils.escape(results.get("phonetic", "") or "")
         
         doubao_loading = results.get("doubao_loading", False)
         google_loading = results.get("google_loading", False)
@@ -709,6 +706,8 @@ class FloatingWindow(QWidget):
             pass
 
         if hasattr(self, 'thread'):
+            if hasattr(self, 'worker'):
+                self.worker.stop()
             self.thread.quit()
             self.thread.wait()
         super().closeEvent(event)

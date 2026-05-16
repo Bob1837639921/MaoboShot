@@ -1,6 +1,8 @@
 import asyncio
 import os
 import subprocess
+import tempfile
+import uuid
 import wave
 import re
 import threading
@@ -112,13 +114,14 @@ def play_voice_worker(text, status_signal=None):
             # 本地 Piper TTS
             model_cn = PIPER_DIR / "zh_CN-huayan-medium.onnx"
             model_en = PIPER_DIR / "en_US-lessac-medium.onnx"
-            temp_wav = PIPER_DIR / "temp_speech.wav"
-            silence_wav = PIPER_DIR / "silence_0.5s.wav"
+            cache_dir = tempfile.gettempdir()
+            temp_wav = os.path.join(cache_dir, f"maoboshot_tts_{uuid.uuid4().hex}.wav")
+            silence_wav = os.path.join(cache_dir, "maoboshot_silence_0.5s.wav")
 
             # 确保存在空白音音频
-            if not silence_wav.exists():
+            if not os.path.exists(silence_wav):
                 try:
-                    with wave.open(str(silence_wav), 'wb') as f:
+                    with wave.open(silence_wav, 'wb') as f:
                         f.setnchannels(1)
                         f.setsampwidth(2)
                         f.setframerate(22050)
@@ -134,14 +137,14 @@ def play_voice_worker(text, status_signal=None):
             safe_text = "，" + text
             
             if PIPER_EXE.exists():
-                cmd_gen = [str(PIPER_EXE), "--model", str(current_model), "--length_scale", "1.15", "--output_file", str(temp_wav)]
+                cmd_gen = [str(PIPER_EXE), "--model", str(current_model), "--length_scale", "1.15", "--output_file", temp_wav]
                 p_gen = subprocess.Popen(cmd_gen, stdin=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
                 _add_process(p_gen)
                 
                 p_gen.communicate(input=safe_text.encode('utf-8'))
                 _remove_process(p_gen)
                 
-                if temp_wav.exists():
+                if os.path.exists(temp_wav):
                     cmd_play = [
                         str(MPV_EXE), 
                         "--no-terminal", 
@@ -150,9 +153,9 @@ def play_voice_worker(text, status_signal=None):
                         "--volume=130",       # 本地引擎也放大基础音量
                         "--af=acompressor"    # 加上防爆音动态压缩
                     ]
-                    if silence_wav.exists():
-                        cmd_play.append(str(silence_wav))
-                    cmd_play.append(str(temp_wav))
+                    if os.path.exists(silence_wav):
+                        cmd_play.append(silence_wav)
+                    cmd_play.append(temp_wav)
                     
                     p_play = subprocess.Popen(cmd_play, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
                     _add_process(p_play)
@@ -165,4 +168,9 @@ def play_voice_worker(text, status_signal=None):
         logger.error(f"播放出错: {e}", exc_info=True)
         send_status("❌ 出错")
     finally:
+        try:
+            if "temp_wav" in locals() and os.path.exists(temp_wav):
+                os.remove(temp_wav)
+        except Exception:
+            pass
         send_status("reset")

@@ -64,6 +64,19 @@ ManboShot/
 
 > *如果留空不填 API Key，软件将自动降级为“纯 Google 翻译”模式，界面依然完美适配。*
 
+配置会保存到当前用户目录下：
+
+```text
+%APPDATA%\MaoboShot\config.json
+```
+
+仓库中的 `config.example.json` 只作为配置模板，不要把真实 API Key 提交到 Git。开发或便携运行时，如果 `mpv` 工具不在项目根目录，可以通过环境变量指定：
+
+```powershell
+$env:MAOBOSHOT_TOOL_DIR="D:\Tools\maoboshot\mpv"
+python main.py
+```
+
 ---
 
 ## ⌨️ 快捷键说明 (Hotkeys)
@@ -87,6 +100,14 @@ python build_exe.py
 ```
 
 脚本将自动清理缓存、融合所有依赖项与隐式库（解决 Pydantic/SSL 等玄学报错），并在 `dist/ManboShot` 目录下生成最终可分发的绿色文件夹。
+
+如需构建后同步复制到指定发布目录，可显式传入：
+
+```bash
+python build_exe.py --deploy-dir D:\Release\ManboShot
+```
+
+默认情况下脚本不会删除或覆盖项目外的固定目录，只会生成 `dist/ManboShot`。
 
 **发布结构**：
 将生成的 `ManboShot` 文件夹打个 `.zip` 压缩包即可发给任何人使用。

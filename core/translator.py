@@ -1,6 +1,5 @@
 import re
-import traceback
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, Signal, Slot
 from openai import OpenAI
 from deep_translator import GoogleTranslator
@@ -50,6 +49,11 @@ class TranslatorWorker(QObject):
         else:
             self.db_client = None
             logger.info("未配置豆包模型，开启纯Google翻译模式。")
+
+    def stop(self):
+        """停止后台翻译任务。"""
+        self._current_task_id += 1
+        self.executor.shutdown(wait=False, cancel_futures=True)
 
     @Slot(str)
     def do_work(self, text):

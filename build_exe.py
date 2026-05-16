@@ -1,9 +1,9 @@
 import PyInstaller.__main__
-import os
+import argparse
 import shutil
 from pathlib import Path
 
-def build():
+def build(deploy_dir=None):
     # 获取项目根目录
     project_root = Path(__file__).parent.absolute()
     
@@ -64,24 +64,31 @@ def build():
     PyInstaller.__main__.run(args)
     print("\nBuild complete! Check dist/ManboShot folder.")
 
-    # --- 🚀 自动部署到指定目录 ---
+    # --- 🚀 可选部署到指定目录 ---
     source_dir = dist_dir / 'ManboShot'
-    target_dir = Path(r"D:\ManboShot\ManboShot")
+    target_dir = Path(deploy_dir).expanduser().resolve() if deploy_dir else None
     
-    if source_dir.exists():
+    if source_dir.exists() and target_dir:
         print(f"\nMoving packaged files to {target_dir}...")
         try:
             # 如果目标文件夹已存在，先删除，确保干净覆盖
             if target_dir.exists():
                 shutil.rmtree(target_dir)
             
-            # 将 dist/ManboShot 复制到 D:\ManboShot\ManboShot
             shutil.copytree(source_dir, target_dir)
             print(f"✅ Automatically deployed to: {target_dir}")
         except Exception as e:
             print(f"❌ Failed to move to {target_dir}: {e}")
+    elif source_dir.exists():
+        print(f"Packaged files are ready at: {source_dir}")
     else:
         print("❌ Build output not found. Something went wrong.")
 
 if __name__ == '__main__':
-    build()
+    parser = argparse.ArgumentParser(description="Build MaoboShot with PyInstaller.")
+    parser.add_argument(
+        "--deploy-dir",
+        help="Optional directory to receive a clean copy of dist/ManboShot after build."
+    )
+    args = parser.parse_args()
+    build(args.deploy_dir)
