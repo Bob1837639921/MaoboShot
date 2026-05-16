@@ -59,7 +59,7 @@ def load_app_config():
     config_path = CONFIG_FILE if CONFIG_FILE.exists() else LEGACY_CONFIG_FILE
     if config_path.exists():
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             merged = dict(DEFAULT_CONFIG)
             merged.update(data)
