@@ -8,8 +8,10 @@ from core.ocr_engine import warmup_ocr_background
 from ui.main_window import FloatingWindow
 
 def main():
-    # 强制获取管理员权限 (解决全局热键冲突问题)
-    elevate_privileges()
+    # 如果是开发环境 (非打包状态) 且没有指定 --admin 参数，或者指定了 --no-admin，则不强制提权，方便开发调试与终端日志输出
+    if "--no-admin" not in sys.argv:
+        if getattr(sys, 'frozen', False) or "--admin" in sys.argv:
+            elevate_privileges()
 
     # 初始化应用
     app = QApplication(sys.argv)

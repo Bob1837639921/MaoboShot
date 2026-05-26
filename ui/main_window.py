@@ -4,6 +4,7 @@ import time
 import ctypes
 import html as html_utils
 import pyperclip
+import re
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton,
                                QFrame, QSystemTrayIcon, QMenu, QStyle, QApplication, QGraphicsDropShadowEffect)
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QThread, QPropertyAnimation, QEasingCurve, QEvent
@@ -11,7 +12,7 @@ from PySide6.QtGui import QCursor, QAction, QIcon, QColor
 from ui.settings_window import SettingsWindow
 
 from core.config import ICON_PATH, logger, load_app_config
-from core.tts_engine import play_voice_worker
+from core.tts_engine import play_voice_worker, stop_tts_playback
 from core.translator import TranslatorWorker
 from ui.snipping_widget import SnippingWidget
 from core.ocr_engine import HAS_OCR
@@ -37,6 +38,7 @@ class FloatingWindow(QWidget):
         self._clipboard_suppress_until = 0
         self.last_clipboard_time = 0
         self.last_clipboard_text = ""
+        self.is_playing_tts = False
 
         self.setup_tray()
         self.tts_status_signal.connect(self.update_play_btn_status)
@@ -51,7 +53,6 @@ class FloatingWindow(QWidget):
         self._init_hotkeys()
 
         # 移除之前的实时监控，改为安装事件过滤器监听 Enter 键
-        # self.input_edit.textChanged.connect(self.on_input_changed)
         self.input_edit.installEventFilter(self)
 
     def eventFilter(self, obj, event):
@@ -66,6 +67,9 @@ class FloatingWindow(QWidget):
     def on_translate_clicked(self):
         text = self.input_edit.toPlainText().strip()
         if text:
+            # 🛡️ 核心优化：发起新查询前主动打断当前正在朗读的音频，防止旧音频重叠播放！
+            stop_tts_playback()
+            
             self._last_translated_text = text
             self.current_text_for_speech = text
             
@@ -487,13 +491,15 @@ class FloatingWindow(QWidget):
         
         # 智能动态音标：如果输入的是中文，没有生成音标，但翻译结果是简短的英文，提取英文的音标
         if not phonetic:
-            import re
             try:
                 import eng_to_ipa as ipa
                 eng_result = doubao if (doubao and not doubao_loading) else google
                 # 如果有结果，且结果比较短，且没有中文字符，就试着转音标
                 if eng_result and len(eng_result) < 30 and not re.search(r'[\u4e00-\u9fff]', eng_result):
-                    ph = ipa.convert(eng_result.lower().strip())
+                    # 🛡️ 核心优化：去除首尾的常见标点符号以大幅提高 eng_to_ipa 转换成功率 (例如将 "Hello!" 转换为 "Hello" 再查音标)
+                    clean_eng = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()?]+$', '', eng_result.strip())
+                    clean_eng = re.sub(r'^[.,\/#!$%\^&\*;:{}=\-_`~()?]+', '', clean_eng)
+                    ph = ipa.convert(clean_eng.lower().strip())
                     if "*" not in ph and ph:
                         phonetic = f"/{ph}/"
             except Exception:
@@ -583,12 +589,22 @@ class FloatingWindow(QWidget):
         if text == "reset":
             self.play_btn.setText("🔊 朗读原文")
             self.play_btn.setEnabled(True)
+            self.is_playing_tts = False
         else:
-            self.play_btn.setText(text)
+            # 播放中按钮文本提示打断操作，并保持 Enabled=True 允许点击打断
+            self.play_btn.setText(f"⏹️ 停止播放 ({text})")
+            self.play_btn.setEnabled(True)
+            self.is_playing_tts = True
 
     def play_audio(self):
+        if getattr(self, "is_playing_tts", False):
+            # 🛡️ 核心优化：若当前正在播放，点击按钮触发打断并停止朗读
+            stop_tts_playback()
+            return
+
         if not self.current_text_for_speech: return
         self.play_btn.setEnabled(False)
+        self.is_playing_tts = True
         import threading
         threading.Thread(target=play_voice_worker, args=(self.current_text_for_speech, self.tts_status_signal), daemon=True).start()
 

@@ -34,11 +34,13 @@ def force_focus_window(hwnd):
     u_current_thread = kernel32.GetCurrentThreadId()
     
     if u_foreground_thread != u_current_thread:
-        user32.AttachThreadInput(u_foreground_thread, u_current_thread, True)
-        user32.ShowWindow(hwnd, 9) 
-        user32.SetForegroundWindow(hwnd)
-        user32.SetFocus(hwnd)
-        user32.AttachThreadInput(u_foreground_thread, u_current_thread, False)
+        try:
+            user32.AttachThreadInput(u_foreground_thread, u_current_thread, True)
+            user32.ShowWindow(hwnd, 9) 
+            user32.SetForegroundWindow(hwnd)
+            user32.SetFocus(hwnd)
+        finally:
+            user32.AttachThreadInput(u_foreground_thread, u_current_thread, False)
     else:
         user32.ShowWindow(hwnd, 9)
         user32.SetForegroundWindow(hwnd)

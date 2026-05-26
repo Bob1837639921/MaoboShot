@@ -96,6 +96,11 @@ class TranslatorWorker(QObject):
                 )
                 collected_messages = []
                 for chunk in response:
+                    # 🛡️ 核心优化：检测当前任务是否已被废弃。如果已被新请求覆盖，立即切断网络流迭代，释放连接并优雅退出！
+                    if self._current_task_id != task_id:
+                        logger.info(f"Task {task_id} superseded by {self._current_task_id}. Breaking stream.")
+                        break
+                    
                     if chunk.choices and chunk.choices[0].delta.content:
                         collected_messages.append(chunk.choices[0].delta.content)
                         if self._current_task_id == task_id:

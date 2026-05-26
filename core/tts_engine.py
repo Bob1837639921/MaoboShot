@@ -24,6 +24,11 @@ def _add_process(p):
     with _process_lock:
         _active_processes.append(p)
 
+
+def _add_process(p):
+    with _process_lock:
+        _active_processes.append(p)
+
 def _remove_process(p):
     with _process_lock:
         if p in _active_processes:
@@ -39,20 +44,35 @@ def cleanup_tts_processes():
                 pass
         _active_processes.clear()
 
-def _play_audio_file(audio_path):
-    """使用 pygame 播放本地音频文件，作为 mpv 不存在时的兜底方案。"""
-    with _pygame_lock:
-        import pygame
+def stop_tts_playback():
+    """停止当前的语音合成与播放进程"""
+    logger.info("主动打断当前语音朗读进程")
+    cleanup_tts_processes()
 
-        pygame.mixer.init()
+def _play_audio_file(audio_path):
+    """使用 pygame 播放本地音频文件，作为 mpv 不存在时的兜底方案。若 pygame 缺失则尝试用内置 winsound 播放 wav 文件。"""
+    with _pygame_lock:
         try:
-            pygame.mixer.music.load(audio_path)
-            pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():
-                time.sleep(0.05)
-            pygame.mixer.music.unload()
-        finally:
-            pygame.mixer.quit()
+            import pygame
+            pygame.mixer.init()
+            try:
+                pygame.mixer.music.load(audio_path)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.05)
+                pygame.mixer.music.unload()
+            finally:
+                pygame.mixer.quit()
+        except ImportError:
+            # 如果是 wav 文件，尝试使用内置 winsound 播放 (零依赖)
+            if str(audio_path).lower().endswith(".wav"):
+                try:
+                    import winsound
+                    winsound.PlaySound(str(audio_path), winsound.SND_FILENAME)
+                except Exception as e:
+                    logger.error(f"winsound 播放失败: {e}")
+            else:
+                logger.error("pygame 未安装，且音频格式非 WAV，无法进行兜底播放。")
 
 def _looks_like_base64(value):
     if not isinstance(value, str) or len(value) < 80:
