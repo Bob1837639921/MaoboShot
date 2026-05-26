@@ -54,6 +54,7 @@ class FloatingWindow(QWidget):
 
         # 移除之前的实时监控，改为安装事件过滤器监听 Enter 键
         self.input_edit.installEventFilter(self)
+        self.input_edit.selectionChanged.connect(self.on_input_selection_changed)
 
     def eventFilter(self, obj, event):
         if obj == self.input_edit and event.type() == QEvent.Type.KeyPress:
@@ -481,7 +482,10 @@ class FloatingWindow(QWidget):
     def update_translation(self, results):
         self._last_results = results
         
-        doubao = html_utils.escape(results.get("doubao", "") or "").replace("\n", "<br>")
+        doubao_raw = results.get("doubao", "") or ""
+        doubao_escaped = html_utils.escape(doubao_raw)
+        doubao_escaped = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', doubao_escaped)
+        doubao = doubao_escaped.replace("\n", "<br>")
         google = html_utils.escape(results.get("google", "") or "").replace("\n", "<br>")
         phonetic = html_utils.escape(results.get("phonetic", "") or "")
         
@@ -542,8 +546,21 @@ class FloatingWindow(QWidget):
         html += "</div>"
 
         self.result_label.setText(html)
+        self._base_translation_html = html
         self.result_label.show()
         self.play_btn.show()
+        
+        # 根据输入文本的字数动态计算窗口宽度，字数越多窗口越宽 (380px ~ 620px)
+        # 英文算 1 个字符，中文算 2 个，让宽度自适应不同语言的阅读体验
+        src_text = getattr(self, 'current_text_for_speech', '') or ''
+        char_count = sum(2 if '\u4e00' <= c <= '\u9fff' else 1 for c in src_text)
+        target_width = 380
+        if char_count > 15:
+            # 15个虚拟字符以上开始平滑拉宽，最大到 620px
+            target_width = min(620, 380 + int((char_count - 15) * 1.5))
+            
+        # 仅调整理想宽度，高度将由下方的 adjustSize 自动根据排版撑开
+        self.resize(target_width, self.height())
         
         # 自适应扩展大小 (不再强制 resize(1,1)，避免 AI 流式输出时抽搐闪烁)
         self.adjustSize()
@@ -720,3 +737,96 @@ class FloatingWindow(QWidget):
             self.thread.quit()
             self.thread.wait()
         super().closeEvent(event)
+
+    def on_input_selection_changed(self):
+        # 如果当前没有翻译结果，不做处理
+        if not getattr(self, '_last_results', None):
+            return
+            
+        selected_text = self.input_edit.textCursor().selectedText().strip()
+        
+        # 如果选中为空，恢复原始 HTML
+        if not selected_text:
+            if hasattr(self, '_base_translation_html') and self._base_translation_html:
+                self.result_label.setText(self._base_translation_html)
+            return
+            
+        # 限制长度，防止大段文本翻译导致延迟
+        if len(selected_text) > 100:
+            return
+            
+        # 启动后台线程翻译选中的词/短语
+        import threading
+        threading.Thread(target=self._translate_and_highlight_selection, args=(selected_text,), daemon=True).start()
+
+    def _translate_and_highlight_selection(self, selected_text):
+        try:
+            # 检测被选中文字的语言，进行翻译
+            has_chinese = bool(re.search(r'[\u4e00-\u9fff]', selected_text))
+            from deep_translator import GoogleTranslator
+            if has_chinese:
+                translated = GoogleTranslator(source='auto', target='en').translate(selected_text)
+            else:
+                translated = GoogleTranslator(source='auto', target='zh-CN').translate(selected_text)
+                
+            if not translated:
+                return
+                
+            # 回到主线程更新 UI 高亮
+            from PySide6.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(self, "_highlight_translated_text", 
+                                   Qt.QueuedConnection, 
+                                   Q_ARG(str, translated.strip()))
+        except Exception as e:
+            logger.error(f"选择高亮翻译出错: {e}")
+
+    @Slot(str)
+    def _highlight_translated_text(self, target_text):
+        if not hasattr(self, '_base_translation_html') or not self._base_translation_html:
+            return
+            
+        # 获取当前正在选中的文本，如果用户已经取消选择，则不进行高亮
+        current_selection = self.input_edit.textCursor().selectedText().strip()
+        if not current_selection:
+            self.result_label.setText(self._base_translation_html)
+            return
+            
+        html = self._base_translation_html
+        
+        # 🛡️ 核心高亮逻辑：在保留原有 HTML 结构的同时，高亮译文中匹配的词语
+        words_to_highlight = [target_text]
+        if len(target_text) > 1 and not re.search(r'[\u4e00-\u9fff]', target_text):
+            # 英文去除首尾标点符号，提高匹配率
+            clean_word = re.sub(r'^[.,\/#!$%\^&\*;:{}=\-_`~()?]+|[.,\/#!$%\^&\*;:{}=\-_`~()?]+$', '', target_text)
+            if clean_word and clean_word not in words_to_highlight:
+                words_to_highlight.append(clean_word)
+                
+        highlighted_html = html
+        highlighted = False
+        
+        # 寻找匹配并高亮
+        for word in words_to_highlight:
+            if not word: continue
+            bg_color = "rgba(255, 215, 0, 0.4)" if self.theme == "dark" else "rgba(26, 115, 232, 0.2)"
+            text_color = "#ffffff" if self.theme == "dark" else "#1a73e8"
+            span_style = f"background-color: {bg_color}; color: {text_color}; font-weight: bold; border-radius: 3px; padding: 1px 3px;"
+            
+            try:
+                escaped_word = re.escape(word)
+                # 使用正则避免匹配 HTML 标签内属性
+                if not re.search(r'[\u4e00-\u9fff]', word): # 英文使用单词边界
+                    pattern = re.compile(rf'(?<!<)(?<!&)\b{escaped_word}\b(?!>)(?![^<>]*>)', re.IGNORECASE)
+                    new_html, count = pattern.subn(f'<span style="{span_style}">\\g<0></span>', highlighted_html)
+                else: # 中文不使用单词边界
+                    pattern_zh = re.compile(rf'(?<!<)(?<!&){escaped_word}(?!>)(?![^<>]*>)')
+                    new_html, count = pattern_zh.subn(f'<span style="{span_style}">\\g<0></span>', highlighted_html)
+                
+                if count > 0:
+                    highlighted_html = new_html
+                    highlighted = True
+                    break
+            except Exception as e:
+                logger.error(f"正则高亮失败: {e}")
+                
+        if highlighted:
+            self.result_label.setText(highlighted_html)

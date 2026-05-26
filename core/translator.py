@@ -83,7 +83,7 @@ class TranslatorWorker(QObject):
                 refresh_ui({"doubao_loading": False})
                 return
             
-            system_prompt = "你是一个专业翻译。请将用户输入翻译为中文或英文，只输出译文本身，不要说多余的话。保持语境。"
+            system_prompt = "你是一个专业翻译。请将用户输入翻译为中文或英文，只输出译文本身，不要说多余的话。如果原文排版混乱、缺乏换行或全部粘连在一起（如PDF复制文本），请在翻译时根据语义进行合理的【分段和排版优化】，使其结构清晰、易读。"
             try:
                 response = self.db_client.chat.completions.create(
                     model=self.model_ep,
