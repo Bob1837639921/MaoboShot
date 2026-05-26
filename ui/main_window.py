@@ -666,13 +666,6 @@ class FloatingWindow(QWidget):
             # 防抖：忽略单一复制动作产生的多次连续系统事件 (如浏览器复制通常会发两次)
             return
 
-        # 🔥 交互优化：如果翻译窗口当前是打开可见状态，将其作为"剪贴板监听面板"。
-        # 只要复制了与当前不同的新文本，直接【单次复制】触发二次翻译。
-        if self.isVisible() and text != getattr(self, '_last_translated_text', ''):
-            self.last_clipboard_time = 0
-            self.last_clipboard_text = ""
-            self.handle_clipboard_update(text, popup=True, ignore_move=False)
-            return
 
         # ⬇️ 双击唤醒逻辑
         if time_since_last <= 0.6 and text == self.last_clipboard_text:
