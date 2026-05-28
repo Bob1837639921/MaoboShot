@@ -57,7 +57,8 @@ DEFAULT_CONFIG = {
     "XIAOMI_TTS_BASE_URL": os.getenv("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"),
     "XIAOMI_TTS_MODEL": os.getenv("XIAOMI_TTS_MODEL", "mimo-v2-tts"),
     "XIAOMI_TTS_VOICE": os.getenv("XIAOMI_TTS_VOICE", "mimo_default"),
-    "XIAOMI_TTS_STYLE": os.getenv("XIAOMI_TTS_STYLE", "")
+    "XIAOMI_TTS_STYLE": os.getenv("XIAOMI_TTS_STYLE", ""),
+    "AUDIO_PLAYER": "pygame"
 }
 
 def load_app_config():

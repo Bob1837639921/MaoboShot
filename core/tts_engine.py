@@ -63,16 +63,17 @@ def _play_audio_file(audio_path):
                 pygame.mixer.music.unload()
             finally:
                 pygame.mixer.quit()
-        except ImportError:
+        except Exception as e:
+            logger.warning(f"pygame 播放失败或未安装: {e}")
             # 如果是 wav 文件，尝试使用内置 winsound 播放 (零依赖)
             if str(audio_path).lower().endswith(".wav"):
                 try:
                     import winsound
                     winsound.PlaySound(str(audio_path), winsound.SND_FILENAME)
-                except Exception as e:
-                    logger.error(f"winsound 播放失败: {e}")
+                except Exception as e2:
+                    logger.error(f"winsound 播放失败: {e2}")
             else:
-                logger.error("pygame 未安装，且音频格式非 WAV，无法进行兜底播放。")
+                logger.error("pygame 播放失败，且音频格式非 WAV，无法进行兜底播放。")
 
 def _looks_like_base64(value):
     if not isinstance(value, str) or len(value) < 80:
@@ -166,7 +167,23 @@ def _play_xiaomi_tts(text, config, send_status):
         with open(audio_path, "wb") as f:
             f.write(audio_bytes)
         send_status("▶️ 开始朗读...")
-        _play_audio_file(audio_path)
+        player_engine = config.get("AUDIO_PLAYER", "pygame")
+        if player_engine == "mpv" and MPV_EXE.exists():
+            cmd_play = [
+                str(MPV_EXE), 
+                "--no-terminal", 
+                "--force-window=no", 
+                "--audio-buffer=0.2",
+                "--volume=130",
+                "--af=acompressor",
+                audio_path
+            ]
+            p_play = subprocess.Popen(cmd_play, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
+            _add_process(p_play)
+            p_play.wait()
+            _remove_process(p_play)
+        else:
+            _play_audio_file(audio_path)
     finally:
         try:
             if os.path.exists(audio_path):
@@ -186,14 +203,27 @@ def play_voice_worker(text, status_signal=None):
         if status_signal:
             status_signal.emit(msg)
 
+    def preprocess_text_for_speech(t):
+        if not t:
+            return t
+        # 拆分驼峰命名法 (e.g. setStyleSheet -> set Style Sheet)
+        t = re.sub(r'([a-z])([A-Z])', r'\1 \2', t)
+        # 将字母之间的连字符和下划线替换为空格 (e.g. hello-world -> hello world, foo_bar -> foo bar)
+        t = re.sub(r'([a-zA-Z])[-_]+([a-zA-Z])', r'\1 \2', t)
+        return t
+
     # 我们直接把标点符号前缀的逻辑干掉，因为底层拼接已经足够可靠了，且避免前缀被Piper误伤
-    safe_text_for_speech = text
+    safe_text_for_speech = preprocess_text_for_speech(text)
     
     config = load_app_config()
     use_local_tts = config.get("USE_LOCAL_TTS", True)
     ai_tts_provider = config.get("AI_TTS_PROVIDER", "edge")
 
     use_cloud = len(text) > HYBRID_THRESHOLD or not use_local_tts
+    
+    if not use_cloud and not PIPER_EXE.exists():
+        logger.warning("未检测到本地 Piper.exe，已自动降级为云端语音合成")
+        use_cloud = True
 
     try:
         send_status("⏳ 准备中...")
@@ -218,7 +248,8 @@ def play_voice_worker(text, status_signal=None):
                 )
                 first_chunk = True
 
-                if MPV_EXE.exists():
+                player_engine = config.get("AUDIO_PLAYER", "pygame")
+                if player_engine == "mpv" and MPV_EXE.exists():
                     # 启动 mpv 接收 stdin 数据，并加上音频增强参数
                     player_process = subprocess.Popen(
                         [
@@ -293,7 +324,7 @@ def play_voice_worker(text, status_signal=None):
             if not current_model.exists():
                 current_model = model_cn
 
-            safe_text = "，" + text
+            safe_text = "，" + safe_text_for_speech
             
             if PIPER_EXE.exists():
                 cmd_gen = [str(PIPER_EXE), "--model", str(current_model), "--length_scale", "1.15", "--output_file", temp_wav]
@@ -316,7 +347,8 @@ def play_voice_worker(text, status_signal=None):
                         cmd_play.append(silence_wav)
                     cmd_play.append(temp_wav)
                     
-                    if MPV_EXE.exists():
+                    player_engine = config.get("AUDIO_PLAYER", "pygame")
+                    if player_engine == "mpv" and MPV_EXE.exists():
                         p_play = subprocess.Popen(cmd_play, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
                         _add_process(p_play)
                         p_play.wait()

@@ -8,6 +8,7 @@ class SettingsWindow(QDialog):
         super().__init__(parent)
         self.setWindowTitle("⚙️ 设置 - ManboShot")
         self.setFixedSize(520, 620)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         # 去掉无边框，允许普通窗口操作，但置顶
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.setStyleSheet("""
@@ -119,6 +120,17 @@ class SettingsWindow(QDialog):
         xiaomi_style_layout.addWidget(self.xiaomi_style_input)
         layout.addLayout(xiaomi_style_layout)
 
+        # 播放器引擎选择
+        self.player_combo = QComboBox()
+        self.player_combo.addItems(["pygame (默认)", "mpv (增强音质)"])
+        self.player_combo.currentIndexChanged.connect(self._on_player_changed)
+        
+        player_layout = QVBoxLayout()
+        player_layout.setSpacing(5)
+        player_layout.addWidget(QLabel("🎵 音频播放引擎:"))
+        player_layout.addWidget(self.player_combo)
+        layout.addLayout(player_layout)
+
         # 主题选择
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["🌙 暗色主题 (Dark)", "☀️ 浅色主题 (Light)"])
@@ -147,6 +159,14 @@ class SettingsWindow(QDialog):
 
         self._load_current()
 
+    def _on_player_changed(self, index):
+        if index == 1:
+            from core.config import MPV_EXE, TOOL_DIR
+            if not MPV_EXE.exists():
+                QMessageBox.warning(self, "缺少 mpv", 
+                                    f"未检测到 mpv.exe。\n\n如需使用 mpv 播放器，请下载 Windows 版本的 mpv，并将解压后的 mpv.exe 放置在以下目录中：\n{TOOL_DIR}\n\n下载地址：https://mpv.io/installation/")
+                self.player_combo.setCurrentIndex(0)
+
     def _load_current(self):
         config = load_app_config()
         self.key_input.setText(config.get("DOUBAO_API_KEY", ""))
@@ -167,6 +187,9 @@ class SettingsWindow(QDialog):
         voice_index = self.xiaomi_voice_combo.findText(voice)
         self.xiaomi_voice_combo.setCurrentIndex(voice_index if voice_index >= 0 else 0)
         self.xiaomi_style_input.setText(config.get("XIAOMI_TTS_STYLE", ""))
+        
+        player_engine = config.get("AUDIO_PLAYER", "pygame")
+        self.player_combo.setCurrentIndex(1 if player_engine == "mpv" else 0)
             
         theme = config.get("THEME", "dark")
         if hasattr(self, 'theme_combo'):
@@ -211,7 +234,8 @@ class SettingsWindow(QDialog):
             "XIAOMI_TTS_BASE_URL": self.xiaomi_base_input.text().strip() or "https://token-plan-cn.xiaomimimo.com/v1",
             "XIAOMI_TTS_MODEL": self.xiaomi_model_input.text().strip() or "mimo-v2-tts",
             "XIAOMI_TTS_VOICE": self.xiaomi_voice_combo.currentText(),
-            "XIAOMI_TTS_STYLE": self.xiaomi_style_input.text().strip()
+            "XIAOMI_TTS_STYLE": self.xiaomi_style_input.text().strip(),
+            "AUDIO_PLAYER": "mpv" if self.player_combo.currentIndex() == 1 else "pygame"
         }
         save_app_config(new_config)
         QMessageBox.information(self, "成功", "设置已保存，立即生效！")
