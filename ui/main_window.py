@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextE
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QThread, QPropertyAnimation, QEasingCurve, QEvent
 from PySide6.QtGui import QCursor, QAction, QIcon, QColor
 from ui.settings_window import SettingsWindow
+from ui.ui_main_window import Ui_FloatingWindow, apply_window_theme
 
 from core.config import ICON_PATH, logger, load_app_config
 from core.tts_engine import play_voice_worker, stop_tts_playback
@@ -19,7 +20,7 @@ from core.ocr_engine import HAS_OCR
 from utils.win_api import (WM_HOTKEY, WM_CLIPBOARDUPDATE, HOTKEY_ID_Q, HOTKEY_ID_Z,
                            force_focus_window, MOD_ALT, VK_Q, VK_Z)
 
-class FloatingWindow(QWidget):
+class FloatingWindow(QWidget, Ui_FloatingWindow):
     request_translation_signal = Signal(str)
     show_window_signal = Signal()
     trigger_snipping_signal = Signal()
@@ -48,13 +49,17 @@ class FloatingWindow(QWidget):
             self.snipper.ocr_finished_signal.connect(self.handle_ocr_result)
             self.snipper.ocr_started_signal.connect(self.handle_ocr_started)
 
-        self._init_ui()
+        self.setupUi(self)
+        self.apply_theme()
         self._init_workers()
         self._init_hotkeys()
 
         # 移除之前的实时监控，改为安装事件过滤器监听 Enter 键
         self.input_edit.installEventFilter(self)
-        self.input_edit.selectionChanged.connect(self.on_input_selection_changed)
+        
+        from ui.selection_handler import SelectionTranslationHelper
+        self.selection_helper = SelectionTranslationHelper(self)
+        self.input_edit.selectionChanged.connect(self.selection_helper.handle_selection_changed)
 
     def eventFilter(self, obj, event):
         if obj == self.input_edit and event.type() == QEvent.Type.KeyPress:
@@ -75,216 +80,34 @@ class FloatingWindow(QWidget):
             self.current_text_for_speech = text
             
             # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
-            self.result_label.hide()
-            self.play_btn.hide()
-            self.resize(1, 1)
+            self.hide_results()
+            self.setFixedWidth(500)
             self.adjustSize()
             
             self.request_translation_signal.emit(text)
 
-    def _init_ui(self):
-        self.main_layout = QVBoxLayout()
-        # 预留外边距给阴影效果
-        self.main_layout.setContentsMargins(15, 15, 15, 15)
-        
-        self.container = QFrame()
-        self.container.setObjectName("container")
-        
-        # 增加硬件级窗口阴影
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setXOffset(0)
-        shadow.setYOffset(4)
-        shadow.setColor(QColor(0, 0, 0, 160))
-        self.container.setGraphicsEffect(shadow)
-        
-        self.content_layout = QVBoxLayout()
-        self.content_layout.setContentsMargins(15, 15, 15, 15)
-        self.content_layout.setSpacing(10)
-
-        # === 顶部拖拽把手与控制栏 ===
-        self.header_layout = QHBoxLayout()
-        self.header_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.title_label = QLabel("✨ ManboShot")
-        
-        self.close_btn = QPushButton("×")
-        self.close_btn.setFixedSize(24, 24)
-        self.close_btn.setCursor(Qt.PointingHandCursor)
-        self.close_btn.clicked.connect(self.hide)
-        
-        self.header_layout.addWidget(self.title_label)
-        self.header_layout.addStretch()
-        self.header_layout.addWidget(self.close_btn)
-
-        # === 输入框 ===
-        self.input_layout = QHBoxLayout()
-        self.input_layout.setSpacing(8)
-        self.input_edit = QTextEdit()
-        self.input_edit.setPlaceholderText("手动输入 / 划词复制 / Alt+Z 截图...")
-        self.input_edit.setMaximumHeight(80)
-        self.input_edit.setMinimumHeight(80)
-        
-        # === 立即翻译按钮 ===
-        self.translate_btn = QPushButton("翻译\n↵")
-        self.translate_btn.setToolTip("快捷键: Enter (换行请用 Shift+Enter)")
-        self.translate_btn.setFixedSize(60, 80)
-        self.translate_btn.setCursor(Qt.PointingHandCursor)
-        self.translate_btn.clicked.connect(self.on_translate_clicked)
-        
-        self.input_layout.addWidget(self.input_edit)
-        self.input_layout.addWidget(self.translate_btn)
-
-        # === 结果展示 ===
-        self.result_label = QLabel()
-        self.result_label.setWordWrap(True)
-        self.result_label.setTextFormat(Qt.RichText)
-        self.result_label.setOpenExternalLinks(True)
-        self.result_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
-
-        # === 朗读按钮 ===
-        self.play_btn = QPushButton("🔊 朗读原文")
-        self.play_btn.setCursor(Qt.PointingHandCursor)
-        self.play_btn.clicked.connect(self.play_audio)
-
-        self.content_layout.addLayout(self.header_layout)
-        self.content_layout.addLayout(self.input_layout)
-        self.content_layout.addWidget(self.result_label)
-        self.content_layout.addWidget(self.play_btn)
-        
-        self.container.setLayout(self.content_layout)
-        self.main_layout.addWidget(self.container)
-        self.setLayout(self.main_layout)
-
-        self.result_label.hide()
+    def hide_results(self):
+        self.ai_title_lbl.hide()
+        self.ai_scroll.hide()
+        self.google_title_lbl.hide()
+        self.google_scroll.hide()
         self.play_btn.hide()
-        self.resize(380, 100)
-        
-        # === 弹窗淡入动画 ===
-        self.fade_anim = QPropertyAnimation(self, b"windowOpacity")
-        self.fade_anim.setDuration(150)
-        self.fade_anim.setStartValue(0.0)
-        self.fade_anim.setEndValue(1.0)
-        self.fade_anim.setEasingCurve(QEasingCurve.OutQuad)
-        
-        # 应用初始主题
-        self.apply_theme()
+
+    def show_results(self):
+        self.google_title_lbl.show()
+        self.google_scroll.show()
+        ai_enabled = getattr(self, '_last_results', {}).get("ai_enabled", True)
+        if ai_enabled:
+            self.ai_title_lbl.show()
+            self.ai_scroll.show()
+        else:
+            self.ai_title_lbl.hide()
+            self.ai_scroll.hide()
 
     def apply_theme(self):
         config = load_app_config()
         self.theme = config.get("THEME", "dark")
-        
-        if self.theme == "light":
-            bg_color = "rgba(245, 245, 245, 245)"
-            border_color = "rgba(200, 200, 200, 150)"
-            title_color = "#666666"
-            close_btn_color = "#888888"
-            input_bg = "rgba(255, 255, 255, 200)"
-            input_text = "#333333"
-            input_border = "rgba(200, 200, 200, 180)"
-            result_text = "#333333"
-            play_btn_bg = "#1a73e8"
-            play_btn_hover = "#2b84f3"
-            
-            self.html_vars = {
-                "card_bg": "rgba(0,0,0,0.05)",
-                "phonetic_bg": "rgba(0,0,0,0.08)",
-                "phonetic_text": "#666666",
-                "divider": "rgba(0,0,0,0.08)",
-                "ai_title": "#0067C0",
-                "google_title": "#d97b00",
-                "placeholder": "#888888"
-            }
-        else:
-            bg_color = "rgba(30, 30, 30, 245)"
-            border_color = "rgba(80, 80, 80, 150)"
-            title_color = "#999999"
-            close_btn_color = "#888888"
-            input_bg = "rgba(15, 15, 15, 150)"
-            input_text = "#ffffff"
-            input_border = "rgba(80, 80, 80, 150)"
-            result_text = "#e0e0e0"
-            play_btn_bg = "#1a73e8"
-            play_btn_hover = "#2b84f3"
-            
-            self.html_vars = {
-                "card_bg": "rgba(0,0,0,0.15)",
-                "phonetic_bg": "rgba(255,255,255,0.1)",
-                "phonetic_text": "#aaaaaa",
-                "divider": "rgba(255,255,255,0.1)",
-                "ai_title": "#5bc0de",
-                "google_title": "#f0ad4e",
-                "placeholder": "#888888"
-            }
-
-        self.container.setStyleSheet(f"""
-            QFrame#container {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 12px;
-            }}
-        """)
-        
-        self.title_label.setStyleSheet(f"color: {title_color}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 12px; font-weight: bold;")
-        
-        self.close_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {close_btn_color};
-                font-size: 16px;
-                font-weight: bold;
-                border: none;
-                border-radius: 12px;
-            }}
-            QPushButton:hover {{ background-color: #ff4d4f; color: white; }}
-        """)
-        
-        self.input_edit.setStyleSheet(f"""
-            QTextEdit {{ 
-                background-color: {input_bg}; 
-                color: {input_text}; 
-                border: 1px solid {input_border}; 
-                border-radius: 8px; 
-                font-family: 'Segoe UI', 'Microsoft YaHei'; 
-                font-size: 14px; 
-                padding: 8px; 
-            }}
-            QTextEdit:focus {{
-                border: 1px solid #1a73e8;
-            }}
-        """)
-        
-        self.result_label.setStyleSheet(f"QLabel {{ color: {result_text}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; line-height: 1.4; }}")
-        
-        self.play_btn.setStyleSheet(f"""
-            QPushButton {{ 
-                background-color: {play_btn_bg}; 
-                color: white; 
-                border: none; 
-                border-radius: 8px; 
-                padding: 8px 16px; 
-                font-family: 'Segoe UI', 'Microsoft YaHei'; 
-                font-size: 13px;
-                font-weight: bold; 
-            }} 
-            QPushButton:hover {{ background-color: {play_btn_hover}; }}
-            QPushButton:pressed {{ background-color: #1257b5; }}
-            QPushButton:disabled {{ background-color: #555555; color: #aaaaaa; }}
-        """)
-
-        self.translate_btn.setStyleSheet(f"""
-            QPushButton {{ 
-                background-color: {play_btn_bg}; 
-                color: white; 
-                border: none; 
-                border-radius: 8px; 
-                font-family: 'Segoe UI', 'Microsoft YaHei'; 
-                font-size: 14px;
-                font-weight: bold; 
-            }} 
-            QPushButton:hover {{ background-color: {play_btn_hover}; }}
-            QPushButton:pressed {{ background-color: #1257b5; }}
-        """)
+        apply_window_theme(self, self.theme)
         
         if hasattr(self, '_last_results') and self._last_results:
             self.update_translation(self._last_results)
@@ -307,40 +130,8 @@ class FloatingWindow(QWidget):
             logger.warning("无法注册剪贴板监听！")
 
     def setup_tray(self):
-        self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setToolTip("✨ ManboShot")
-        
-        icon_file = ICON_PATH / "icon.ico"
-        if icon_file.exists():
-            self.tray_icon.setIcon(QIcon(str(icon_file)))
-        else:
-            self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
-            
-        self.tray_icon.activated.connect(self.on_tray_icon_activated)
-        
-        self.tray_menu = QMenu()
-        show_action = QAction("显示主界面 (Alt+Q)", self)
-        show_action.triggered.connect(lambda: self.handle_show_window(reset=True))
-        snip_action = QAction("截图翻译 (Alt+Z)", self)
-        snip_action.triggered.connect(self.start_snipping)
-        settings_action = QAction("⚙️ 设置", self)
-        settings_action.triggered.connect(self.show_settings)
-        
-        quit_action = QAction("退出", self)
-        quit_action.triggered.connect(QApplication.instance().quit)
-
-        self.tray_menu.addAction(show_action)
-        self.tray_menu.addAction(snip_action)
-        self.tray_menu.addSeparator()
-        self.tray_menu.addAction(settings_action)
-        self.tray_menu.addAction(quit_action)
-        self.tray_icon.setContextMenu(self.tray_menu)
-        self.tray_icon.show()
-
-    def on_tray_icon_activated(self, reason):
-        from PySide6.QtWidgets import QSystemTrayIcon
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.handle_show_window(reset=True)
+        from ui.tray_icon import ManboShotTrayIcon
+        self.tray_icon = ManboShotTrayIcon(self)
 
     def show_settings(self):
         dialog = SettingsWindow(self)
@@ -355,16 +146,18 @@ class FloatingWindow(QWidget):
         self.input_edit.setText("🖼️ 正在提取图片文字, 请稍候...")
         self.input_edit.blockSignals(False)
         
-        card_bg = self.html_vars.get("card_bg", "rgba(0,0,0,0.15)")
         placeholder = self.html_vars.get("placeholder", "#888888")
-        html = f"<div style='background-color: {card_bg}; padding: 10px; border-radius: 8px;'><div style='color: {placeholder}; font-style: italic;'>⚡ 图像 OCR 识别中...</div></div>"
+        html = f"<div style='color: {placeholder}; font-style: italic;'>⚡ 图像 OCR 识别中...</div>"
         
-        self.result_label.setText(html)
-        self.result_label.show()
+        self.ai_result_lbl.setText(html)
+        self.ai_title_lbl.show()
+        self.ai_scroll.show()
+        self.google_title_lbl.hide()
+        self.google_scroll.hide()
         self.play_btn.hide()
         
         # 强制缩小窗口，解决遗留的过大弹窗问题
-        self.resize(1, 1)
+        self.setFixedWidth(500)
         self.adjustSize()
         self.handle_show_window()
 
@@ -378,7 +171,11 @@ class FloatingWindow(QWidget):
             card_bg = self.html_vars.get("card_bg", "rgba(0,0,0,0.15)")
             placeholder = self.html_vars.get("placeholder", "#888888")
             html = f"<div style='background-color: {card_bg}; padding: 10px; border-radius: 8px;'><div style='color: {placeholder}; font-style: italic;'>请重新截图尝试。</div></div>"
-            self.result_label.setText(html)
+            self.ai_result_lbl.setText(html)
+            self.ai_title_lbl.show()
+            self.ai_scroll.show()
+            self.google_title_lbl.hide()
+            self.google_scroll.hide()
             self.adjustSize()
             return
             
@@ -396,9 +193,8 @@ class FloatingWindow(QWidget):
             self.current_text_for_speech = text
             
             # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
-            self.result_label.hide()
-            self.play_btn.hide()
-            self.resize(1, 1)
+            self.hide_results()
+            self.setFixedWidth(500)
             self.adjustSize()
             
             self.request_translation_signal.emit(text)
@@ -413,9 +209,8 @@ class FloatingWindow(QWidget):
         self._last_translated_text = text
         
         # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
-        self.result_label.hide()
-        self.play_btn.hide()
-        self.resize(1, 1)
+        self.hide_results()
+        self.setFixedWidth(500)
         self.adjustSize()
         
         self.request_translation_signal.emit(text)
@@ -425,6 +220,17 @@ class FloatingWindow(QWidget):
     def handle_show_window(self, ignore_move=False, reset=False):
         self._clipboard_suppress_until = time.time() + 0.8
         
+        # 动态根据当前所在屏幕可用高度，适配两组滚动区域的最大高度
+        from PySide6.QtGui import QGuiApplication
+        pos = QCursor.pos()
+        screen = QGuiApplication.screenAt(pos)
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+        max_scroll_height = max(300, min(500, int(screen_geometry.height() * 0.5)))
+        self.ai_scroll.setMaximumHeight(max_scroll_height)
+        self.google_scroll.setMaximumHeight(max_scroll_height)
+        
         # 强制清空内容，恢复初始状态
         if reset:
             self.input_edit.blockSignals(True)
@@ -432,9 +238,8 @@ class FloatingWindow(QWidget):
             self.input_edit.blockSignals(False)
             self.current_text_for_speech = ""
             self._last_translated_text = ""
-            self.result_label.hide()
-            self.play_btn.hide()
-            self.resize(1, 1)
+            self.hide_results()
+            self.setFixedWidth(500)
             self.adjustSize()
 
         if not ignore_move or not self.isVisible():
@@ -509,58 +314,67 @@ class FloatingWindow(QWidget):
             except Exception:
                 pass
 
-        # 结果面板渲染为内嵌风格卡片
-        card_bg = self.html_vars.get("card_bg")
         placeholder = self.html_vars.get('placeholder')
-        html = f"<div style='background-color: {card_bg}; padding: 10px; border-radius: 8px;'>"
         
-        # --- 豆包模块 (始终显示) ---
-        if phonetic:
-            pb = self.html_vars.get('phonetic_bg')
-            pt = self.html_vars.get('phonetic_text')
-            html += f"<div style='margin-bottom: 8px;'><span style='color:{pt}; font-size:12px; background-color: {pb}; padding: 2px 6px; border-radius: 4px;'>{phonetic}</span></div>"
-        
-        ai_title_color = self.html_vars.get('ai_title')
-        html += f"<div style='color:{ai_title_color}; font-weight:bold; font-size:12px; margin-bottom: 6px;'>✨ 豆包 AI</div>"
-        
+        # AI 结果分立卡片渲染
         if not ai_enabled:
-            html += f"<div style='margin-bottom: 12px; color: {placeholder}; font-style: italic;'>暂未配置 API Key</div>"
-        elif doubao_loading and not doubao:
-            html += f"<div style='margin-bottom: 12px; color: {placeholder}; font-style: italic;'>AI 思考中...</div>"
+            self.ai_title_lbl.hide()
+            self.ai_scroll.hide()
+            self._base_ai_html = ""
         else:
-            html += f"<div style='margin-bottom: 12px;'>{doubao}</div>"
+            self.ai_title_lbl.show()
+            self.ai_scroll.show()
             
-        # --- 谷歌模块 (始终显示) ---
-        divider = self.html_vars.get('divider')
-        border_top = f"border-top: 1px solid {divider}; padding-top: 10px;"
-        html += f"<div style='{border_top}'>"
-        
-        gg_title_color = self.html_vars.get('google_title')
-        html += f"<div style='color:{gg_title_color}; font-weight:bold; font-size:12px; margin-bottom: 6px;'>🌐 谷歌翻译</div>"
-        
-        if google_loading and not google:
-            html += f"<div style='color: {placeholder}; font-style: italic;'>请求中...</div></div>"
-        else:
-            html += f"<div>{google}</div></div>"
+            ai_html = ""
+            if phonetic:
+                pb = self.html_vars.get('phonetic_bg', 'rgba(255,255,255,0.1)')
+                pt = self.html_vars.get('phonetic_text', '#aaaaaa')
+                ai_html += f"<div style='margin-bottom: 8px;'><span style='color:{pt}; font-size:12px; background-color: {pb}; padding: 2px 6px; border-radius: 4px;'>{phonetic}</span></div>"
             
-        html += "</div>"
+            if doubao_loading and not doubao:
+                ai_html += f"<div style='color: {placeholder}; font-style: italic;'>AI 思考中...</div>"
+            else:
+                ai_html += f"<div>{doubao}</div>"
+            
+            self.ai_result_lbl.setText(ai_html)
+            self._base_ai_html = ai_html
 
-        self.result_label.setText(html)
-        self._base_translation_html = html
-        self.result_label.show()
+        # Google 结果分立卡片渲染
+        self.google_title_lbl.show()
+        self.google_scroll.show()
+        
+        gg_html = ""
+        if google_loading and not google:
+            gg_html += f"<div style='color: {placeholder}; font-style: italic;'>请求中...</div>"
+        else:
+            gg_html += f"<div>{google}</div>"
+            
+        self.google_result_lbl.setText(gg_html)
+        self._base_google_html = gg_html
+        
         self.play_btn.show()
         
-        # 根据输入文本的字数动态计算窗口宽度，字数越多窗口越宽 (380px ~ 620px)
+        # 动态根据当前所在屏幕可用高度，适配两组滚动区域的最大高度
+        from PySide6.QtGui import QGuiApplication
+        screen = QGuiApplication.screenAt(self.pos())
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+        max_scroll_height = max(150, min(280, int(screen_geometry.height() * 0.23)))
+        self.ai_scroll.setMaximumHeight(max_scroll_height)
+        self.google_scroll.setMaximumHeight(max_scroll_height)
+
+        # 根据输入文本的字数动态计算窗口宽度，字数越多窗口越宽 (500px ~ 800px)
         # 英文算 1 个字符，中文算 2 个，让宽度自适应不同语言的阅读体验
         src_text = getattr(self, 'current_text_for_speech', '') or ''
         char_count = sum(2 if '\u4e00' <= c <= '\u9fff' else 1 for c in src_text)
-        target_width = 380
-        if char_count > 15:
-            # 15个虚拟字符以上开始平滑拉宽，最大到 620px
-            target_width = min(620, 380 + int((char_count - 15) * 1.5))
+        target_width = 500
+        if char_count > 20:
+            # 20个虚拟字符以上开始平滑拉宽，最大到 800px
+            target_width = min(800, 500 + int((char_count - 20) * 2))
             
         # 仅调整理想宽度，高度将由下方的 adjustSize 自动根据排版撑开
-        self.resize(target_width, self.height())
+        self.setFixedWidth(target_width)
         
         # 自适应扩展大小 (不再强制 resize(1,1)，避免 AI 流式输出时抽搐闪烁)
         self.adjustSize()
@@ -738,95 +552,4 @@ class FloatingWindow(QWidget):
             self.thread.wait()
         super().closeEvent(event)
 
-    def on_input_selection_changed(self):
-        # 如果当前没有翻译结果，不做处理
-        if not getattr(self, '_last_results', None):
-            return
-            
-        selected_text = self.input_edit.textCursor().selectedText().strip()
-        
-        # 如果选中为空，恢复原始 HTML
-        if not selected_text:
-            if hasattr(self, '_base_translation_html') and self._base_translation_html:
-                self.result_label.setText(self._base_translation_html)
-            return
-            
-        # 限制长度，防止大段文本翻译导致延迟
-        if len(selected_text) > 100:
-            return
-            
-        # 启动后台线程翻译选中的词/短语
-        import threading
-        threading.Thread(target=self._translate_and_highlight_selection, args=(selected_text,), daemon=True).start()
 
-    def _translate_and_highlight_selection(self, selected_text):
-        try:
-            # 检测被选中文字的语言，进行翻译
-            has_chinese = bool(re.search(r'[\u4e00-\u9fff]', selected_text))
-            from deep_translator import GoogleTranslator
-            if has_chinese:
-                translated = GoogleTranslator(source='auto', target='en').translate(selected_text)
-            else:
-                translated = GoogleTranslator(source='auto', target='zh-CN').translate(selected_text)
-                
-            if not translated:
-                return
-                
-            # 回到主线程更新 UI 高亮
-            from PySide6.QtCore import QMetaObject, Qt, Q_ARG
-            QMetaObject.invokeMethod(self, "_highlight_translated_text", 
-                                   Qt.QueuedConnection, 
-                                   Q_ARG(str, translated.strip()))
-        except Exception as e:
-            logger.error(f"选择高亮翻译出错: {e}")
-
-    @Slot(str)
-    def _highlight_translated_text(self, target_text):
-        if not hasattr(self, '_base_translation_html') or not self._base_translation_html:
-            return
-            
-        # 获取当前正在选中的文本，如果用户已经取消选择，则不进行高亮
-        current_selection = self.input_edit.textCursor().selectedText().strip()
-        if not current_selection:
-            self.result_label.setText(self._base_translation_html)
-            return
-            
-        html = self._base_translation_html
-        
-        # 🛡️ 核心高亮逻辑：在保留原有 HTML 结构的同时，高亮译文中匹配的词语
-        words_to_highlight = [target_text]
-        if len(target_text) > 1 and not re.search(r'[\u4e00-\u9fff]', target_text):
-            # 英文去除首尾标点符号，提高匹配率
-            clean_word = re.sub(r'^[.,\/#!$%\^&\*;:{}=\-_`~()?]+|[.,\/#!$%\^&\*;:{}=\-_`~()?]+$', '', target_text)
-            if clean_word and clean_word not in words_to_highlight:
-                words_to_highlight.append(clean_word)
-                
-        highlighted_html = html
-        highlighted = False
-        
-        # 寻找匹配并高亮
-        for word in words_to_highlight:
-            if not word: continue
-            bg_color = "rgba(255, 215, 0, 0.4)" if self.theme == "dark" else "rgba(26, 115, 232, 0.2)"
-            text_color = "#ffffff" if self.theme == "dark" else "#1a73e8"
-            span_style = f"background-color: {bg_color}; color: {text_color}; font-weight: bold; border-radius: 3px; padding: 1px 3px;"
-            
-            try:
-                escaped_word = re.escape(word)
-                # 使用正则避免匹配 HTML 标签内属性
-                if not re.search(r'[\u4e00-\u9fff]', word): # 英文使用单词边界
-                    pattern = re.compile(rf'(?<!<)(?<!&)\b{escaped_word}\b(?!>)(?![^<>]*>)', re.IGNORECASE)
-                    new_html, count = pattern.subn(f'<span style="{span_style}">\\g<0></span>', highlighted_html)
-                else: # 中文不使用单词边界
-                    pattern_zh = re.compile(rf'(?<!<)(?<!&){escaped_word}(?!>)(?![^<>]*>)')
-                    new_html, count = pattern_zh.subn(f'<span style="{span_style}">\\g<0></span>', highlighted_html)
-                
-                if count > 0:
-                    highlighted_html = new_html
-                    highlighted = True
-                    break
-            except Exception as e:
-                logger.error(f"正则高亮失败: {e}")
-                
-        if highlighted:
-            self.result_label.setText(highlighted_html)
