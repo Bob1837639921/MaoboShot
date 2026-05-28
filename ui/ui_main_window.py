@@ -203,8 +203,8 @@ def apply_window_theme(window, theme_name):
     window.ai_title_lbl.setStyleSheet(f"QLabel {{ color: {window.html_vars.get('ai_title')}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 13px; font-weight: bold; }}")
     window.google_title_lbl.setStyleSheet(f"QLabel {{ color: {window.html_vars.get('google_title')}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 13px; font-weight: bold; }}")
     
-    window.ai_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: transparent; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; line-height: 1.4; padding: 10px; }}")
-    window.google_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: transparent; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; line-height: 1.4; padding: 10px; }}")
+    window.ai_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: transparent; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; padding: 10px; }}")
+    window.google_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: transparent; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; padding: 10px; }}")
     
     card_bg = window.html_vars.get("card_bg")
     scroll_style = f"""

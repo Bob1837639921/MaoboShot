@@ -361,8 +361,23 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             screen = QGuiApplication.primaryScreen()
         screen_geometry = screen.availableGeometry()
         max_scroll_height = max(150, min(280, int(screen_geometry.height() * 0.23)))
-        self.ai_scroll.setMaximumHeight(max_scroll_height)
-        self.google_scroll.setMaximumHeight(max_scroll_height)
+        
+        # 🛡️ 核心优化：强制立即激活布局并自适应调整子控件大小
+        # 解决 Qt QScrollArea sizeHint 经典高度挤压 Bug，保证单行/多行翻译完美撑开，完全无滚动条
+        self.layout().activate()
+        self.ai_result_lbl.adjustSize()
+        self.google_result_lbl.adjustSize()
+        
+        # 预留 15px 呼吸边距防止文字裁剪，并限制在屏幕比例的最大允许高度内
+        ai_content_height = self.ai_result_lbl.height() + 15
+        gg_content_height = self.google_result_lbl.height() + 15
+        
+        if ai_enabled:
+            self.ai_scroll.setFixedHeight(min(max_scroll_height, ai_content_height))
+        else:
+            self.ai_scroll.setFixedHeight(0)
+            
+        self.google_scroll.setFixedHeight(min(max_scroll_height, gg_content_height))
 
         # 根据输入文本的字数动态计算窗口宽度，字数越多窗口越宽 (500px ~ 800px)
         # 英文算 1 个字符，中文算 2 个，让宽度自适应不同语言的阅读体验
