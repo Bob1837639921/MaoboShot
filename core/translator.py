@@ -1,4 +1,5 @@
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, Signal, Slot
 from openai import OpenAI
@@ -95,6 +96,7 @@ class TranslatorWorker(QObject):
                     stream=True
                 )
                 collected_messages = []
+                last_ui_update = 0
                 for chunk in response:
                     # 🛡️ 核心优化：检测当前任务是否已被废弃。如果已被新请求覆盖，立即切断网络流迭代，释放连接并优雅退出！
                     if self._current_task_id != task_id:
@@ -105,7 +107,16 @@ class TranslatorWorker(QObject):
                         collected_messages.append(chunk.choices[0].delta.content)
                         if self._current_task_id == task_id:
                             results["doubao"] = "".join(collected_messages)
-                            refresh_ui({"doubao_loading": False})
+                            
+                            # 🛡️ 核心优化：高频流式输出节流，防止长文本导致的 Qt UI 线程卡死
+                            now = time.time()
+                            if now - last_ui_update > 0.1:
+                                refresh_ui({"doubao_loading": False})
+                                last_ui_update = now
+                
+                # 循环结束后，确保最后一次完整结果被更新到 UI
+                if self._current_task_id == task_id:
+                    refresh_ui({"doubao_loading": False})
 
             except Exception as e:
                 logger.error(f"豆包 API 请求错误: {e}", exc_info=True)

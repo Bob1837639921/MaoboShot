@@ -81,28 +81,31 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             
             # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
             self.hide_results()
-            self.setFixedWidth(500)
+            self._update_window_width(text)
             self.adjustSize()
             
             self.request_translation_signal.emit(text)
 
+    def _update_window_width(self, text=""):
+        if not text:
+            text = getattr(self, 'current_text_for_speech', '') or ''
+        char_count = sum(2 if '\u4e00' <= c <= '\u9fff' else 1 for c in text)
+        # 动态宽度：单个字最窄 340，长句最大 800
+        target_width = max(340, min(800, 340 + int(char_count * 8)))
+        self.setFixedWidth(target_width)
+        return target_width
+
     def hide_results(self):
-        self.ai_title_lbl.hide()
-        self.ai_scroll.hide()
-        self.google_title_lbl.hide()
-        self.google_scroll.hide()
+        self.main_scroll.hide()
         self.play_btn.hide()
 
     def show_results(self):
-        self.google_title_lbl.show()
-        self.google_scroll.show()
+        self.main_scroll.show()
         ai_enabled = getattr(self, '_last_results', {}).get("ai_enabled", True)
-        if ai_enabled:
-            self.ai_title_lbl.show()
-            self.ai_scroll.show()
-        else:
-            self.ai_title_lbl.hide()
-            self.ai_scroll.hide()
+        self.ai_title_lbl.setVisible(ai_enabled)
+        self.ai_result_lbl.setVisible(ai_enabled)
+        self.google_title_lbl.show()
+        self.google_result_lbl.show()
 
     def apply_theme(self):
         config = load_app_config()
@@ -151,13 +154,14 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         
         self.ai_result_lbl.setText(html)
         self.ai_title_lbl.show()
-        self.ai_scroll.show()
+        self.ai_result_lbl.show()
         self.google_title_lbl.hide()
-        self.google_scroll.hide()
+        self.google_result_lbl.hide()
+        self.main_scroll.show()
         self.play_btn.hide()
         
         # 强制缩小窗口，解决遗留的过大弹窗问题
-        self.setFixedWidth(500)
+        self._update_window_width("🖼️ 正在提取图片文字, 请稍候...")
         self.adjustSize()
         self.handle_show_window()
 
@@ -173,9 +177,10 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             html = f"<div style='background-color: {card_bg}; padding: 10px; border-radius: 8px;'><div style='color: {placeholder}; font-style: italic;'>请重新截图尝试。</div></div>"
             self.ai_result_lbl.setText(html)
             self.ai_title_lbl.show()
-            self.ai_scroll.show()
+            self.ai_result_lbl.show()
             self.google_title_lbl.hide()
-            self.google_scroll.hide()
+            self.google_result_lbl.hide()
+            self.main_scroll.show()
             self.adjustSize()
             return
             
@@ -194,7 +199,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             
             # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
             self.hide_results()
-            self.setFixedWidth(500)
+            self._update_window_width(text)
             self.adjustSize()
             
             self.request_translation_signal.emit(text)
@@ -210,7 +215,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         
         # 发起新查询前：清空旧的巨长翻译结果并收缩窗口
         self.hide_results()
-        self.setFixedWidth(500)
+        self._update_window_width(text)
         self.adjustSize()
         
         self.request_translation_signal.emit(text)
@@ -220,16 +225,15 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
     def handle_show_window(self, ignore_move=False, reset=False):
         self._clipboard_suppress_until = time.time() + 0.8
         
-        # 动态根据当前所在屏幕可用高度，适配两组滚动区域的最大高度
+        # 动态根据当前所在屏幕可用高度，适配滚动区域的最大高度
         from PySide6.QtGui import QGuiApplication
         pos = QCursor.pos()
         screen = QGuiApplication.screenAt(pos)
         if not screen:
             screen = QGuiApplication.primaryScreen()
         screen_geometry = screen.availableGeometry()
-        max_scroll_height = max(300, min(500, int(screen_geometry.height() * 0.5)))
-        self.ai_scroll.setMaximumHeight(max_scroll_height)
-        self.google_scroll.setMaximumHeight(max_scroll_height)
+        max_scroll_height = max(300, min(800, int(screen_geometry.height() * 0.8)))
+        self.main_scroll.setMaximumHeight(max_scroll_height)
         
         # 强制清空内容，恢复初始状态
         if reset:
@@ -239,7 +243,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.current_text_for_speech = ""
             self._last_translated_text = ""
             self.hide_results()
-            self.setFixedWidth(500)
+            self._update_window_width("")
             self.adjustSize()
 
         if not ignore_move or not self.isVisible():
@@ -319,11 +323,11 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         # AI 结果分立卡片渲染
         if not ai_enabled:
             self.ai_title_lbl.hide()
-            self.ai_scroll.hide()
+            self.ai_result_lbl.hide()
             self._base_ai_html = ""
         else:
             self.ai_title_lbl.show()
-            self.ai_scroll.show()
+            self.ai_result_lbl.show()
             
             ai_html = ""
             if phonetic:
@@ -341,7 +345,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
         # Google 结果分立卡片渲染
         self.google_title_lbl.show()
-        self.google_scroll.show()
+        self.google_result_lbl.show()
+        self.main_scroll.show()
         
         gg_html = ""
         if google_loading and not google:
@@ -354,42 +359,36 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         
         self.play_btn.show()
         
-        # 动态根据当前所在屏幕可用高度，适配两组滚动区域的最大高度
+        # 动态根据当前所在屏幕可用高度，适配滚动区域的最大高度
         from PySide6.QtGui import QGuiApplication
         screen = QGuiApplication.screenAt(self.pos())
         if not screen:
             screen = QGuiApplication.primaryScreen()
         screen_geometry = screen.availableGeometry()
-        max_scroll_height = max(150, min(280, int(screen_geometry.height() * 0.23)))
+        max_scroll_height = max(300, min(800, int(screen_geometry.height() * 0.8)))
         
-        # 🛡️ 核心优化：强制立即激活布局并自适应调整子控件大小
-        # 解决 Qt QScrollArea sizeHint 经典高度挤压 Bug，保证单行/多行翻译完美撑开，完全无滚动条
+        # 1. 设置自适应宽度
+        self._update_window_width(getattr(self, 'current_text_for_speech', ''))
+
+        # 2. 🛡️ 核心优化：强制立即激活布局并自适应调整子控件大小
+        # 必须在宽度设置后，让内部 Label 按照新宽度重新折行计算高度
         self.layout().activate()
+        
+        # 由于合并成了一个 main_scroll，需要让 scroll_layout 也强制刷新
+        vp_width = self.main_scroll.viewport().width() if self.main_scroll.isVisible() else 300
+        self.ai_result_lbl.setMinimumWidth(vp_width - 20)
+        self.google_result_lbl.setMinimumWidth(vp_width - 20)
+        
         self.ai_result_lbl.adjustSize()
         self.google_result_lbl.adjustSize()
         
-        # 预留 15px 呼吸边距防止文字裁剪，并限制在屏幕比例的最大允许高度内
-        ai_content_height = self.ai_result_lbl.height() + 15
-        gg_content_height = self.google_result_lbl.height() + 15
+        self.scroll_layout.activate()
+        self.scroll_content.adjustSize()
         
-        if ai_enabled:
-            self.ai_scroll.setFixedHeight(min(max_scroll_height, ai_content_height))
-        else:
-            self.ai_scroll.setFixedHeight(0)
-            
-        self.google_scroll.setFixedHeight(min(max_scroll_height, gg_content_height))
-
-        # 根据输入文本的字数动态计算窗口宽度，字数越多窗口越宽 (500px ~ 800px)
-        # 英文算 1 个字符，中文算 2 个，让宽度自适应不同语言的阅读体验
-        src_text = getattr(self, 'current_text_for_speech', '') or ''
-        char_count = sum(2 if '\u4e00' <= c <= '\u9fff' else 1 for c in src_text)
-        target_width = 500
-        if char_count > 20:
-            # 20个虚拟字符以上开始平滑拉宽，最大到 800px
-            target_width = min(800, 500 + int((char_count - 20) * 2))
-            
-        # 仅调整理想宽度，高度将由下方的 adjustSize 自动根据排版撑开
-        self.setFixedWidth(target_width)
+        # 预留 15px 呼吸边距防止文字裁剪，并限制在屏幕比例的最大允许高度内
+        content_height = self.scroll_content.sizeHint().height() + 15
+        
+        self.main_scroll.setFixedHeight(min(max_scroll_height, content_height))
         
         # 自适应扩展大小 (不再强制 resize(1,1)，避免 AI 流式输出时抽搐闪烁)
         self.adjustSize()

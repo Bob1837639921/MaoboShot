@@ -119,6 +119,11 @@ def _play_xiaomi_tts(text, config, send_status):
     model = config.get("XIAOMI_TTS_MODEL", "mimo-v2-tts").strip() or "mimo-v2-tts"
     voice = config.get("XIAOMI_TTS_VOICE", "mimo_default").strip() or "mimo_default"
     style = config.get("XIAOMI_TTS_STYLE", "").strip()
+    
+    # 补全标点符号，防止 TTS 在句尾突然断音或吐字不清
+    if text and not text.endswith((".", "!", "?", "。", "！", "？", "”", '"', "”", "'")):
+        text += "。"
+        
     spoken_text = f"<style>{style}</style>{text}" if style else text
 
     send_status("✨ 小米合成中...")
@@ -132,7 +137,6 @@ def _play_xiaomi_tts(text, config, send_status):
         json={
             "model": model,
             "messages": [
-                {"role": "user", "content": "请将 assistant 消息合成为自然语音。"},
                 {"role": "assistant", "content": spoken_text}
             ],
             "audio": {
