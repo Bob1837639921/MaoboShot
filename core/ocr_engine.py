@@ -23,8 +23,12 @@ def init_ocr_engine():
         if _ocr_instance is None:
             logger.info("Initializing OCR Engine (Warm-up)...")
             try:
-                _ocr_instance = RapidOCR()
-                logger.info("OCR Engine initialized successfully.")
+                _ocr_instance = RapidOCR(
+                    det_limit_side_len=2048,
+                    det_box_thresh=0.3,
+                    det_unclip_ratio=1.6
+                )
+                logger.info("OCR Engine initialized successfully with optimized parameters.")
             except Exception as e:
                 logger.error(f"Failed to initialize OCR: {e}", exc_info=True)
                 _ocr_instance = None

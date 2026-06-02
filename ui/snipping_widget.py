@@ -132,6 +132,94 @@ class SnippingWidget(QWidget):
         # Start OCR in background thread
         threading.Thread(target=self._run_ocr_thread, args=(pil_img,), daemon=True).start()
 
+    def _restore_layout(self, ocr_result):
+        if not ocr_result:
+            return ""
+        
+        parsed_items = []
+        for item in ocr_result:
+            if not item or len(item) < 2:
+                continue
+            box = item[0]
+            if isinstance(item[1], (tuple, list)):
+                text = item[1][0]
+            else:
+                text = item[1]
+                
+            if not text:
+                continue
+                
+            xs = [pt[0] for pt in box]
+            ys = [pt[1] for pt in box]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            y_center = (y_min + y_max) / 2.0
+            height = y_max - y_min
+            
+            parsed_items.append({
+                'x_min': x_min,
+                'x_max': x_max,
+                'y_min': y_min,
+                'y_max': y_max,
+                'y_center': y_center,
+                'height': height,
+                'text': text
+            })
+            
+        if not parsed_items:
+            return ""
+            
+        # 按 y_center 排序进行分行
+        parsed_items.sort(key=lambda item: item['y_center'])
+        
+        lines = []
+        for item in parsed_items:
+            placed = False
+            for line in lines:
+                avg_y_center = sum(member['y_center'] for member in line) / len(line)
+                avg_height = sum(member['height'] for member in line) / len(line)
+                
+                # 如果 Y 轴中心点差值在平均高度的 60% 以内，视作同一行
+                if abs(item['y_center'] - avg_y_center) < (avg_height * 0.6):
+                    line.append(item)
+                    placed = True
+                    break
+                    
+            if not placed:
+                lines.append([item])
+                
+        # 按照平均 y_center 对行进行自上而下排序
+        lines.sort(key=lambda line: sum(member['y_center'] for member in line) / len(line))
+        
+        formatted_lines = []
+        for line in lines:
+            # 同一行内自左向右排序
+            line.sort(key=lambda member: member['x_min'])
+            
+            line_text = line[0]['text']
+            for i in range(1, len(line)):
+                prev_text = line_text
+                curr_text = line[i]['text']
+                
+                prev_char = prev_text[-1] if prev_text else ''
+                curr_char = curr_text[0] if curr_text else ''
+                
+                need_space = False
+                if prev_char and curr_char:
+                    # 如果前一个段落以西文字符结尾且当前段落以西文字符开头，增加空格
+                    if ord(prev_char) < 128 and ord(curr_char) < 128:
+                        if prev_char != ' ' and curr_char != ' ':
+                            need_space = True
+                
+                if need_space:
+                    line_text += " " + curr_text
+                else:
+                    line_text += curr_text
+                    
+            formatted_lines.append(line_text)
+            
+        return "\n".join(formatted_lines)
+
     def _run_ocr_thread(self, img):
         try:
             ocr = get_ocr_engine()
@@ -141,7 +229,7 @@ class SnippingWidget(QWidget):
                 return
             result, _ = ocr(np.array(img))
             if result:
-                text = "\n".join([line[1] for line in result])
+                text = self._restore_layout(result)
                 self.ocr_finished_signal.emit(text if text.strip() else "")
             else:
                 self.ocr_finished_signal.emit("")
