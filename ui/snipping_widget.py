@@ -119,6 +119,12 @@ class SnippingWidget(QWidget):
                 if w > 10 and h > 10:
                     self.process_image(x1, y1, w, h)
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
     def process_image(self, x, y, w, h):
         if not HAS_OCR: return
         self.ocr_started_signal.emit()
@@ -227,7 +233,23 @@ class SnippingWidget(QWidget):
                 logger.error("OCR 引擎尚未就绪或初始化失败。")
                 self.ocr_finished_signal.emit("")
                 return
-            result, _ = ocr(np.array(img))
+            
+            # 将 PIL Image 转换为 numpy 数组
+            img_arr = np.array(img)
+            
+            # 单个单词或贴边截图容易导致检测失败。增加边缘 padding
+            if img_arr.ndim == 3:
+                # PIL Image 转换为 numpy 后为 RGB / RGBA，而 RapidOCR 默认期望 BGR
+                if img_arr.shape[2] == 3:
+                    img_arr = img_arr[:, :, ::-1]  # RGB to BGR
+                elif img_arr.shape[2] == 4:
+                    img_arr = img_arr[:, :, [2, 1, 0, 3]]  # RGBA to BGRA
+                # 使用边缘像素填充 20 像素，避免引入人造边界
+                img_arr = np.pad(img_arr, ((20, 20), (20, 20), (0, 0)), mode='edge')
+            elif img_arr.ndim == 2:
+                img_arr = np.pad(img_arr, ((20, 20), (20, 20)), mode='edge')
+
+            result, _ = ocr(img_arr)
             if result:
                 text = self._restore_layout(result)
                 self.ocr_finished_signal.emit(text if text.strip() else "")
