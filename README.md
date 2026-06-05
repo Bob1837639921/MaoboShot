@@ -45,20 +45,22 @@ cd ManboShot
 pip install -r requirements.txt
 ```
 
-### 2. 外部依赖配置 (关键！)
-本项目音频播放与本地语音依赖外部二进制工具，请在项目根目录下创建一个名为 `mpv` 的文件夹，并放入以下必要文件：
+### 2. 外部依赖配置 (可选进阶扩展 🚀)
+本项目默认内置 **Pygame 播放引擎**与**微软 Edge 云端 TTS**，**开箱即用，直接运行 `main.py` 即可获得极佳体验，没有任何强制依赖！**
+
+如果你追求 **更强的动态防爆音音质**（通过 ffmpeg 压限器）或者 **完全断网离线的本地极速发音**，你可以在项目根目录下创建一个名为 `mpv` 的文件夹，并放入以下**可选**二进制增强工具：
 
 ```text
 ManboShot/
 ├── main.py
-└── mpv/  <-- 必须创建此文件夹
-    ├── mpv.exe                   (核心播放器，接收音频流)
-    ├── piper.exe                 (本地 TTS 推理引擎)
+└── mpv/  <-- (可选扩展目录)
+    ├── mpv.exe                   (核心播放器，接管高级音频流)
+    ├── piper.exe                 (本地极速 TTS 推理引擎)
     ├── zh_CN-huayan-medium.onnx  (中文离线发音模型)
     └── en_US-lessac-medium.onnx  (英文离线发音模型)
 ```
 
-> 💡 **获取方式**：可前往 [Piper GitHub](https://github.com/rhasspy/piper) 和 [MPV 官网](https://mpv.io/) 下载上述免安装工具。
+> 💡 **获取方式**：可前往 [Piper GitHub](https://github.com/rhasspy/piper) 和 [MPV 官网](https://mpv.io/) 下载上述免安装工具。在设置面板中切换“音频播放底层驱动”即可启用。
 
 ### 3. 配置 API Key
 1. 直接运行程序 `python main.py`。
