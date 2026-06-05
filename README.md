@@ -62,42 +62,26 @@ ManboShot/
 
 > 💡 **获取方式**：可前往 [Piper GitHub](https://github.com/rhasspy/piper) 和 [MPV 官网](https://mpv.io/) 下载上述免安装工具。在设置面板中切换“音频播放底层驱动”即可启用。
 
-### 3. 配置 API Key
-1. 直接运行程序 `python main.py`。
-2. 软件会在右下角系统托盘静默运行，右键点击 ✨ 星星图标，选择 **「⚙️ 设置」**。
-3. 在左侧导航栏中填入 AI 大模型配置（如 DeepSeek、豆包、GPT-4o 等），填入 API Key、Base URL 与模型名称 (Model)，并选择你喜欢的主题。
+### 3. 软件配置说明
+1. 直接运行程序 `python main.py`（或者双击打包后的 `ManboShot.exe`）。
+2. 软件会在右下角系统托盘静默运行，右键点击 ✨ 星星图标，选择 **「⚙️ 设置」** 即可打开设置面板。
 
-> *如果留空不填 API Key，软件将自动降级为“纯 Google 翻译”模式，界面依然完美适配。*
+设置面板包含三大模块：
 
-设置窗口会自动把配置保存到当前用户目录下：
+- **🤖 AI 翻译模型**：
+  在这里配置大模型接口。支持任意兼容 OpenAI 规范的接口（如 DeepSeek、豆包、GPT-4o、通义千问等）。
+  你需要填写：`API Key`、`Base URL` 和 `模型名称 (Model)`。
+  > *💡 如果留空不填 API Key，软件将自动降级为“纯 Google 翻译”模式，界面依然完美适配。*
 
-```text
-%APPDATA%\MaoboShot\config.json
-```
+- **🔊 语音与 TTS**：
+  - **引擎工作模式**：可切换纯云端语音或混合语音（需下载可选的本地 piper 模型）。
+  - **云端 AI 提供商**：默认使用免费稳定的 **Edge TTS**。如果你有极高音质与定制化需求，可切换并配置 **小米 MiMo TTS**（同样基于 OpenAI 协议格式配置 Key 和 Base URL）。
 
-仓库中的 `config.example.json` 只说明字段结构。不要手动维护项目根目录的 `config.json`，也不要把真实 API Key 提交到 Git。开发或便携运行时，如果 `mpv` 工具不在项目根目录，可以通过环境变量指定：
+- **⚙️ 通用与外观**：
+  - **音频播放底层驱动**：默认使用内置 `pygame`。如需更强音质，可切换为 `mpv`（需参考第2步下载可选扩展）。
+  - **外观风格**：支持 🌙 暗色主题与 ☀️ 浅色主题热切换。
 
-```powershell
-$env:MAOBOSHOT_TOOL_DIR="D:\Tools\maoboshot\mpv"
-python main.py
-```
-
-### 4. AI 语音设置
-
-设置窗口支持选择 AI 语音提供商：
-
-- **Edge TTS**：默认云端语音，不需要额外 Key。
-- **小米 MiMo TTS**：兼容 OpenAI 接口协议的纯净语音合成引擎。可配置 Base URL、API Key、模型、音色和风格。
-
-小米 MiMo 常用配置：
-
-```text
-Base URL: https://token-plan-cn.xiaomimimo.com/v1
-Model: mimo-v2-tts
-Voice: mimo_default / default_zh / default_en
-```
-
-真实 Key 只通过设置窗口填写，由软件保存到用户目录；不要手动写入或提交项目文件。
+> ⚠️ 所有真实配置会自动保存在系统用户目录下（`%APPDATA%\MaoboShot\config.json`）。请勿直接修改项目代码或提交敏感 Key！
 
 ---
 
@@ -132,13 +116,15 @@ python build_exe.py --deploy-dir D:\Release\ManboShot
 默认情况下脚本不会删除或覆盖项目外的固定目录，只会生成 `dist/ManboShot`。
 
 **发布结构**：
-将生成的 `ManboShot` 文件夹打个 `.zip` 压缩包即可发给任何人使用。
+脚本执行完毕后，将生成的 `ManboShot` 文件夹打个 `.zip` 压缩包即可发给任何人使用。
+
 ```text
 dist/
 └── ManboShot/
-    ├── ManboShot.exe  <-- 用户双击运行这个
-    └── mpv/           <-- 脚本已自动帮你把依赖复制进来了
+    └── ManboShot.exe  <-- 用户双击运行这个即可
 ```
+
+> 💡 **提示**：如果你在项目根目录下放置了可选的 `mpv` 扩展文件夹，打包脚本也会自动将其一并打包到 `dist/ManboShot/mpv` 目录中，方便你制作包含离线语音增强功能的完整分发包！
 
 ---
 
