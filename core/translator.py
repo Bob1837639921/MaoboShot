@@ -40,16 +40,19 @@ class TranslatorWorker(QObject):
         config = load_app_config()
         api_key = config.get("DOUBAO_API_KEY", "").strip()
         self.model_ep = config.get("DOUBAO_MODEL_EP", "").strip()
+        base_url = config.get("AI_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3").strip()
+        if not base_url:
+            base_url = "https://ark.cn-beijing.volces.com/api/v3"
         
         if api_key:
             self.db_client = OpenAI(
                 api_key=api_key,
-                base_url="https://ark.cn-beijing.volces.com/api/v3"
+                base_url=base_url
             )
-            logger.info("已加载火山引擎豆包模型配置。")
+            logger.info("已加载 AI 大模型配置。")
         else:
             self.db_client = None
-            logger.info("未配置豆包模型，开启纯Google翻译模式。")
+            logger.info("未配置 AI 大模型，开启纯 Google 翻译模式。")
 
     def stop(self):
         """停止后台翻译任务。"""

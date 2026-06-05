@@ -50,6 +50,7 @@ CONFIG_FILE = USER_DATA_DIR / "config.json"
 DEFAULT_CONFIG = {
     "DOUBAO_API_KEY": os.getenv("DOUBAO_API_KEY", ""),
     "DOUBAO_MODEL_EP": os.getenv("DOUBAO_MODEL_EP", ""),
+    "AI_BASE_URL": os.getenv("AI_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
     "THEME": "light",
     "USE_LOCAL_TTS": True,
     "AI_TTS_PROVIDER": "edge",

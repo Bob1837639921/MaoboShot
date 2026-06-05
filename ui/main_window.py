@@ -97,6 +97,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
     def hide_results(self):
         self.main_scroll.hide()
+        self.main_scroll.setMinimumHeight(0)
+        self.main_scroll.setMaximumHeight(16777215)
         self.play_btn.hide()
 
     def show_results(self):
@@ -244,41 +246,56 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self._last_translated_text = ""
             self.hide_results()
             self._update_window_width("")
+            self.layout().activate()
+            self.resize(1, 1)
             self.adjustSize()
 
-        if not ignore_move or not self.isVisible():
-            pos = QCursor.pos()
+        def apply_position_and_show():
+            was_visible = self.isVisible()
             
-            # 获取鼠标当前所在的屏幕 (解决多屏幕弹窗强制飞回主屏幕的问题)
-            from PySide6.QtGui import QGuiApplication
-            screen = QGuiApplication.screenAt(pos)
-            if not screen:
-                screen = QApplication.primaryScreen()
-            screen_geometry = screen.availableGeometry()
-            
-            # 将窗口放置在鼠标右下角
-            win_x = pos.x() + 15
-            win_y = pos.y() + 15
-            
-            # 边界防溢出保护 (根据当前所在屏幕的边界计算)
-            if win_x + self.width() > screen_geometry.right():
-                win_x = screen_geometry.right() - self.width() - 15
-            if win_y + self.height() > screen_geometry.bottom():
-                win_y = screen_geometry.bottom() - self.height() - 15
-                
-            if not self.isVisible():
+            # 核心修复：如果窗口是隐藏状态，强制先以全透明模式 show() 出来，
+            # 这样 Qt 的布局系统才能正确激活，后续的 adjustSize() 才能准确计算出缩小后的真实高度。
+            if not was_visible:
                 self.setWindowOpacity(0.0)
-                self.move(win_x, win_y)
                 self.show()
-                self.fade_anim.start()
+
+            if reset:
+                self.resize(1, 1)
+                self.adjustSize()
+
+            if not ignore_move or not was_visible:
+                # 修复"位置会变"问题：使用函数刚被调用瞬间获取的鼠标位置，而不是延迟后的位置
+                current_pos = pos
+                
+                # 获取鼠标当前所在的屏幕 (解决多屏幕弹窗强制飞回主屏幕的问题)
+                from PySide6.QtGui import QGuiApplication
+                screen = QGuiApplication.screenAt(current_pos)
+                if not screen:
+                    from PySide6.QtWidgets import QApplication
+                    screen = QApplication.primaryScreen()
+                screen_geometry = screen.availableGeometry()
+                
+                # 将窗口放置在鼠标右下角
+                win_x = current_pos.x() + 15
+                win_y = current_pos.y() + 15
+                
+                # 边界防溢出保护 (根据当前所在屏幕的边界计算)
+                if win_x + self.width() > screen_geometry.right():
+                    win_x = screen_geometry.right() - self.width() - 15
+                if win_y + self.height() > screen_geometry.bottom():
+                    win_y = screen_geometry.bottom() - self.height() - 15
+                    
+                self.move(win_x, win_y)
+                
+                if not was_visible:
+                    self.fade_anim.start()
             else:
-                # 如果窗口已经可见，直接移动，不播放淡入动画 (防止闪烁)
-                self.move(win_x, win_y)
                 self.show()
-        else:
-            self.show()
-            
-        QTimer.singleShot(50, self.nuke_activate_window)
+                
+            QTimer.singleShot(50, self.nuke_activate_window)
+
+        # 移除 10ms 延迟，直接执行，防止鼠标移动导致位置偏移
+        apply_position_and_show()
 
     def nuke_activate_window(self):
         if not self.isVisible(): 
@@ -289,6 +306,9 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
     @Slot(dict)
     def update_translation(self, results):
+        if not getattr(self, 'current_text_for_speech', ''):
+            return
+            
         self._last_results = results
         
         doubao_raw = results.get("doubao", "") or ""

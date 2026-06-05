@@ -125,23 +125,31 @@ class SettingsWindow(QDialog):
 
         self.key_input = QLineEdit()
         self.key_input.setEchoMode(QLineEdit.Password)
-        self.key_input.setPlaceholderText("例如: d3b9xxxx-xxxx-xxxx...")
+        self.key_input.setPlaceholderText("例如: sk-xxxxxxxx...")
         
-        key_label = QLabel("Doubao API Key")
+        key_label = QLabel("API Key")
         key_label.setProperty("class", "input-label")
         v_layout.addWidget(key_label)
         v_layout.addWidget(self.key_input)
 
         self.ep_input = QLineEdit()
-        self.ep_input.setPlaceholderText("例如: ep-2024xxxxxx-xxxxx")
+        self.ep_input.setPlaceholderText("例如: ep-2024xxxxxx-xxxxx 或 gpt-4o")
         
-        ep_label = QLabel("接入点 (Model Endpoint)")
+        ep_label = QLabel("模型名称或接入点 (Model)")
         ep_label.setProperty("class", "input-label")
         v_layout.addWidget(ep_label)
         v_layout.addWidget(self.ep_input)
+        
+        self.base_url_input = QLineEdit()
+        self.base_url_input.setPlaceholderText("例如: https://ark.cn-beijing.volces.com/api/v3")
+        
+        base_url_label = QLabel("API Base URL")
+        base_url_label.setProperty("class", "input-label")
+        v_layout.addWidget(base_url_label)
+        v_layout.addWidget(self.base_url_input)
 
         card = self.create_card(
-            "火山引擎 豆包模型配置", 
+            "AI 大模型配置 (兼容 OpenAI 格式)", 
             "填写配置以启用高级AI翻译。如果留空，系统将默认回退到基础的 Google 纯享翻译模式。", 
             v_layout
         )
@@ -291,6 +299,7 @@ class SettingsWindow(QDialog):
         config = load_app_config()
         self.key_input.setText(config.get("DOUBAO_API_KEY", ""))
         self.ep_input.setText(config.get("DOUBAO_MODEL_EP", ""))
+        self.base_url_input.setText(config.get("AI_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"))
         
         use_local_tts = config.get("USE_LOCAL_TTS", True)
         self.tts_combo.setCurrentIndex(1 if use_local_tts else 0)
@@ -490,6 +499,7 @@ class SettingsWindow(QDialog):
         new_config = {
             "DOUBAO_API_KEY": self.key_input.text().strip(),
             "DOUBAO_MODEL_EP": self.ep_input.text().strip(),
+            "AI_BASE_URL": self.base_url_input.text().strip(),
             "THEME": theme_val,
             "USE_LOCAL_TTS": use_local_tts_val,
             "AI_TTS_PROVIDER": ai_tts_provider,
