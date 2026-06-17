@@ -1,8 +1,8 @@
 import re
 import threading
 from PySide6.QtCore import QObject, Qt, Slot, QMetaObject, Q_ARG
-from deep_translator import GoogleTranslator
 from core.config import logger
+from core.translator import google_translate_text
 
 class SelectionTranslationHelper(QObject):
     def __init__(self, window):
@@ -39,9 +39,9 @@ class SelectionTranslationHelper(QObject):
             # 检测被选中文字的语言，进行翻译
             has_chinese = bool(re.search(r'[\u4e00-\u9fff]', selected_text))
             if has_chinese:
-                translated = GoogleTranslator(source='auto', target='en').translate(selected_text)
+                translated = google_translate_text(selected_text, 'en')
             else:
-                translated = GoogleTranslator(source='auto', target='zh-CN').translate(selected_text)
+                translated = google_translate_text(selected_text, 'zh-CN')
                 
             if not translated:
                 return

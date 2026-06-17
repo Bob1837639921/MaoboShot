@@ -17,11 +17,11 @@ class SnippingWidget(QWidget):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowState(Qt.WindowFullScreen)
         self.setCursor(Qt.CrossCursor)
         self.start_pos = None
         self.end_pos = None
         self.is_drawing = False
+        self.original_pixmap = None
 
     def start_capture(self):
         self.start_pos = None
@@ -36,21 +36,44 @@ class SnippingWidget(QWidget):
             
         if screen:
             self.original_pixmap = screen.grabWindow(0)
-            # 解决多显示器跳转问题：先解除全屏 -> 移动到目标屏幕坐标系 -> 再全屏
+            # Cover the active screen directly; fullscreen state can jump to the wrong monitor.
             self.setWindowState(Qt.WindowNoState)
             self.setGeometry(screen.geometry())
-            self.setWindowState(Qt.WindowFullScreen)
             
             self.show()
+            self.raise_()
             self.activateWindow()
+
+    def _pixmap_source_rect(self, logical_rect):
+        """Map widget logical coordinates to the grabbed pixmap's pixel coordinates."""
+        if not self.original_pixmap or self.width() <= 0 or self.height() <= 0:
+            return QRect()
+
+        bounded = logical_rect.normalized().intersected(self.rect())
+        if bounded.isEmpty():
+            return QRect()
+
+        scale_x = self.original_pixmap.width() / self.width()
+        scale_y = self.original_pixmap.height() / self.height()
+        left = round(bounded.left() * scale_x)
+        top = round(bounded.top() * scale_y)
+        right = round((bounded.right() + 1) * scale_x)
+        bottom = round((bounded.bottom() + 1) * scale_y)
+
+        return QRect(
+            left,
+            top,
+            max(1, right - left),
+            max(1, bottom - top)
+        ).intersected(self.original_pixmap.rect())
         
     def paintEvent(self, event):
-        if not hasattr(self, 'original_pixmap'): return
+        if not self.original_pixmap: return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
         # 1. 绘制底层原图
-        painter.drawPixmap(0, 0, self.original_pixmap)
+        painter.drawPixmap(self.rect(), self.original_pixmap, self.original_pixmap.rect())
         
         # 2. 绘制半透明黑色遮罩 (稍微调深以凸显高亮区域)
         painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
@@ -59,7 +82,9 @@ class SnippingWidget(QWidget):
             rect = QRect(self.start_pos, self.end_pos).normalized()
             
             # 3. 抠出选中的区域 (去除遮罩)
-            painter.drawPixmap(rect, self.original_pixmap, rect)
+            source_rect = self._pixmap_source_rect(rect)
+            if not source_rect.isEmpty():
+                painter.drawPixmap(rect, self.original_pixmap, source_rect)
             
             # 4. 绘制现代化高亮边框 (Snipaste风格的蓝色 + 内部细白线增加对比度)
             painter.setPen(QPen(QColor(26, 115, 232), 2)) # Google Blue
@@ -128,7 +153,11 @@ class SnippingWidget(QWidget):
     def process_image(self, x, y, w, h):
         if not HAS_OCR: return
         self.ocr_started_signal.emit()
-        cropped = self.original_pixmap.copy(x, y, w, h)
+        crop_rect = self._pixmap_source_rect(QRect(x, y, w, h))
+        if crop_rect.isEmpty():
+            self.ocr_finished_signal.emit("")
+            return
+        cropped = self.original_pixmap.copy(crop_rect)
         byte_array = QByteArray()
         buffer = QBuffer(byte_array)
         buffer.open(QIODevice.WriteOnly)

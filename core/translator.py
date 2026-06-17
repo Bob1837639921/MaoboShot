@@ -25,6 +25,33 @@ def phonetic_symbol(text: str):
         logger.error(f"音标转换错误: {e}")
         return None
 
+def normalize_google_source_text(text: str) -> str:
+    """Make code-style English identifiers readable for Google Translate."""
+    source = text.strip()
+    if not source or re.search(r'[\u4e00-\u9fff]', source):
+        return text
+
+    has_identifier_separator = bool(re.search(r'[_-]', source))
+    has_camel_case = bool(re.search(r'[a-z][A-Z]|[A-Z]{2,}[a-z]', source))
+    is_single_identifier = bool(re.fullmatch(r'[A-Za-z][A-Za-z0-9_$-]*', source))
+    is_upper_identifier = bool(re.fullmatch(r'[A-Z][A-Z0-9_$-]{2,}', source))
+
+    if not (has_identifier_separator or (is_single_identifier and (has_camel_case or is_upper_identifier))):
+        return text
+
+    normalized = source
+    normalized = re.sub(r'[_-]+', ' ', normalized)
+    normalized = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', normalized)
+    normalized = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', normalized)
+    normalized = re.sub(r'(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])', ' ', normalized)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+    return normalized.lower() if normalized else text
+
+def google_translate_text(text: str, target: str) -> str:
+    source_text = normalize_google_source_text(text) if target == 'zh-CN' else text
+    return GoogleTranslator(source='auto', target=target).translate(source_text)
+
 class TranslatorWorker(QObject):
     finished_signal = Signal(dict)
     error_signal = Signal(str)
@@ -133,9 +160,9 @@ class TranslatorWorker(QObject):
         def task_google():
             try:
                 if has_chinese:
-                    res = GoogleTranslator(source='auto', target='en').translate(text)
+                    res = google_translate_text(text, 'en')
                 else:
-                    res = GoogleTranslator(source='auto', target='zh-CN').translate(text)
+                    res = google_translate_text(text, 'zh-CN')
                 if self._current_task_id == task_id:
                     results["google"] = res
             except Exception as e:
