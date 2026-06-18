@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QStyle, QApplication
 from PySide6.QtGui import QIcon, QAction
-from core.config import ICON_PATH
+from core.config import ICON_PATH, load_app_config
 
 class ManboShotTrayIcon(QSystemTrayIcon):
     def __init__(self, window):
@@ -21,10 +21,14 @@ class ManboShotTrayIcon(QSystemTrayIcon):
     def setup_menu(self):
         self.tray_menu = QMenu()
         
-        show_action = QAction("显示主界面 (Alt+Q)", self)
+        config = load_app_config()
+        show_str = config.get("HOTKEY_SHOW", "Alt+Q")
+        snip_str = config.get("HOTKEY_SNIP", "Alt+E")
+        
+        show_action = QAction(f"显示主界面 ({show_str})", self)
         show_action.triggered.connect(lambda: self.window.handle_show_window(reset=True))
         
-        snip_action = QAction("截图翻译 (Alt+Z)", self)
+        snip_action = QAction(f"截图翻译 ({snip_str})", self)
         snip_action.triggered.connect(self.window.start_snipping)
         
         settings_action = QAction("⚙️ 设置", self)

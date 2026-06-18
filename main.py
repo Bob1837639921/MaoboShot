@@ -1,7 +1,7 @@
 import sys
 import os
 from PySide6.QtWidgets import QApplication
-from core.config import logger
+from core.config import logger, load_app_config
 from utils.win_api import elevate_privileges
 from core.tts_engine import cleanup_tts_processes
 from core.ocr_engine import warmup_ocr_background
@@ -26,7 +26,10 @@ def main():
     try:
         window = FloatingWindow()
         # window 默认是隐藏的，由热键触发或托盘点击触发
-        logger.info("ManboShot 助手已启动，隐藏在系统托盘。使用 Alt+Q 唤醒。")
+        config = load_app_config()
+        show_str = config.get("HOTKEY_SHOW", "Alt+Q")
+        snip_str = config.get("HOTKEY_SNIP", "Alt+E")
+        logger.info(f"ManboShot 助手已启动，隐藏在系统托盘。使用 {show_str} 唤醒，双击 Ctrl+C 划词，{snip_str} 截图。")
         sys.exit(app.exec())
     except Exception as e:
         logger.error(f"应用崩溃: {e}", exc_info=True)

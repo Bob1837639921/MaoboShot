@@ -59,7 +59,9 @@ DEFAULT_CONFIG = {
     "XIAOMI_TTS_MODEL": os.getenv("XIAOMI_TTS_MODEL", "mimo-v2.5-tts"),
     "XIAOMI_TTS_VOICE": os.getenv("XIAOMI_TTS_VOICE", "mimo_default"),
     "XIAOMI_TTS_STYLE": os.getenv("XIAOMI_TTS_STYLE", ""),
-    "AUDIO_PLAYER": "pygame"
+    "AUDIO_PLAYER": "pygame",
+    "HOTKEY_SHOW": "Alt+Q",
+    "HOTKEY_SNIP": "Alt+E"
 }
 
 def load_app_config():
