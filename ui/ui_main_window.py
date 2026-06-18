@@ -42,7 +42,7 @@ class Ui_FloatingWindow:
 
         # === 输入框 ===
         window.input_edit = QTextEdit()
-        window.input_edit.setPlaceholderText("在此输入 / 划词复制 / Alt+Z 截图...")
+        window.input_edit.setPlaceholderText("在此输入 / 双击 Ctrl+C 划词 / Alt+E 截图 / Alt+Q 唤起...")
         window.input_edit.setMaximumHeight(100)
         window.input_edit.setMinimumHeight(60)
         

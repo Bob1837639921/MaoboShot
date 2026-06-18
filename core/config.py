@@ -56,7 +56,7 @@ DEFAULT_CONFIG = {
     "AI_TTS_PROVIDER": "edge",
     "XIAOMI_TTS_API_KEY": os.getenv("XIAOMI_TTS_API_KEY", ""),
     "XIAOMI_TTS_BASE_URL": os.getenv("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"),
-    "XIAOMI_TTS_MODEL": os.getenv("XIAOMI_TTS_MODEL", "mimo-v2-tts"),
+    "XIAOMI_TTS_MODEL": os.getenv("XIAOMI_TTS_MODEL", "mimo-v2.5-tts"),
     "XIAOMI_TTS_VOICE": os.getenv("XIAOMI_TTS_VOICE", "mimo_default"),
     "XIAOMI_TTS_STYLE": os.getenv("XIAOMI_TTS_STYLE", ""),
     "AUDIO_PLAYER": "pygame"

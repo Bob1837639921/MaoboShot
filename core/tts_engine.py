@@ -114,9 +114,14 @@ def _play_xiaomi_tts(text, config, send_status):
     if not api_key:
         raise RuntimeError("未配置小米 MiMo TTS API Key")
 
-    base_url = config.get("XIAOMI_TTS_BASE_URL", "https://api.xiaomimimo.com/v1").rstrip("/") + "/"
+    base_url = config.get("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1").strip()
+    if not base_url:
+        base_url = "https://token-plan-cn.xiaomimimo.com/v1"
+    base_url = base_url.rstrip("/") + "/"
     endpoint = urljoin(base_url, "chat/completions")
-    model = config.get("XIAOMI_TTS_MODEL", "mimo-v2-tts").strip() or "mimo-v2-tts"
+    model = config.get("XIAOMI_TTS_MODEL", "mimo-v2.5-tts").strip() or "mimo-v2.5-tts"
+    if model == "mimo-v2-tts":
+        model = "mimo-v2.5-tts"
     voice = config.get("XIAOMI_TTS_VOICE", "mimo_default").strip() or "mimo_default"
     style = config.get("XIAOMI_TTS_STYLE", "").strip()
     
@@ -124,7 +129,13 @@ def _play_xiaomi_tts(text, config, send_status):
     if text and not text.endswith((".", "!", "?", "。", "！", "？", "”", '"', "”", "'")):
         text += "。"
         
-    spoken_text = f"<style>{style}</style>{text}" if style else text
+    messages = []
+    if style:
+        if re.match(r"^\s*[\(\uff08\[][^)\uff09\]]+[\)\uff09\]]", style):
+            text = f"{style}{text}"
+        else:
+            messages.append({"role": "user", "content": style})
+    messages.append({"role": "assistant", "content": text})
 
     send_status("✨ 小米合成中...")
     response = requests.post(
@@ -136,9 +147,7 @@ def _play_xiaomi_tts(text, config, send_status):
         },
         json={
             "model": model,
-            "messages": [
-                {"role": "assistant", "content": spoken_text}
-            ],
+            "messages": messages,
             "audio": {
                 "format": "wav",
                 "voice": voice
