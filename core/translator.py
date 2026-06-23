@@ -3,7 +3,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, Signal, Slot
 from openai import OpenAI
-from deep_translator import GoogleTranslator
+import requests
+from bs4 import BeautifulSoup
 from core.config import logger, load_app_config
 
 try:
@@ -11,6 +12,21 @@ try:
     HAS_IPA = True
 except ImportError:
     HAS_IPA = False
+
+GOOGLE_TRANSLATE_API_URL = "https://translate.googleapis.com/translate_a/single"
+GOOGLE_TRANSLATE_HTML_URLS = (
+    "https://translate.google.com/m",
+    "https://translate.google.com.hk/m",
+)
+GOOGLE_TRANSLATE_TIMEOUT = 8
+GOOGLE_TRANSLATE_RETRIES = 2
+GOOGLE_TRANSLATE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/126.0 Safari/537.36"
+    )
+}
 
 def phonetic_symbol(text: str):
     """提取音标"""
@@ -50,7 +66,60 @@ def normalize_google_source_text(text: str) -> str:
 
 def google_translate_text(text: str, target: str) -> str:
     source_text = normalize_google_source_text(text) if target == 'zh-CN' else text
-    return GoogleTranslator(source='auto', target=target).translate(source_text)
+    last_error = None
+
+    for _ in range(GOOGLE_TRANSLATE_RETRIES):
+        try:
+            response = requests.get(
+                GOOGLE_TRANSLATE_API_URL,
+                params={"client": "gtx", "sl": "auto", "tl": target, "dt": "t", "q": source_text},
+                headers=GOOGLE_TRANSLATE_HEADERS,
+                timeout=GOOGLE_TRANSLATE_TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+            translated = "".join(part[0] for part in data[0] if part and part[0])
+            if translated:
+                return translated
+            raise RuntimeError("Google 翻译结果为空")
+        except requests.RequestException as e:
+            last_error = e
+            time.sleep(0.35)
+        except Exception as e:
+            last_error = e
+            break
+
+    for url in GOOGLE_TRANSLATE_HTML_URLS:
+        for _ in range(GOOGLE_TRANSLATE_RETRIES):
+            try:
+                response = requests.get(
+                    url,
+                    params={"sl": "auto", "tl": target, "q": source_text},
+                    headers=GOOGLE_TRANSLATE_HEADERS,
+                    timeout=GOOGLE_TRANSLATE_TIMEOUT
+                )
+                response.raise_for_status()
+
+                soup = BeautifulSoup(response.text, "html.parser")
+                element = soup.find("div", {"class": "result-container"})
+                if not element:
+                    element = soup.find("div", {"class": "t0"})
+                if not element:
+                    raise RuntimeError("未找到 Google 翻译结果")
+
+                translated = element.get_text(strip=True)
+                if translated:
+                    return translated
+                raise RuntimeError("Google 翻译结果为空")
+            except requests.RequestException as e:
+                last_error = e
+                time.sleep(0.35)
+            except Exception as e:
+                last_error = e
+                break
+
+    logger.error(f"Google 翻译请求失败: {last_error}")
+    raise RuntimeError("Google 翻译网络连接失败，请稍后重试")
 
 class TranslatorWorker(QObject):
     finished_signal = Signal(dict)
