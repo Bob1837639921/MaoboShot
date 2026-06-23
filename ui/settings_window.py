@@ -1,8 +1,8 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QLineEdit, QPushButton, QMessageBox, QComboBox,
-                               QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea)
+                               QLineEdit, QTextEdit, QPushButton, QMessageBox, QComboBox,
+                               QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea, QKeySequenceEdit)
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence
 from core.config import load_app_config, save_app_config, ICON_PATH
 
 class SettingsWindow(QDialog):
@@ -204,7 +204,7 @@ class SettingsWindow(QDialog):
         
         col1 = QVBoxLayout()
         self.xiaomi_model_input = QLineEdit()
-        self.xiaomi_model_input.setPlaceholderText("mimo-v2-tts")
+        self.xiaomi_model_input.setPlaceholderText("mimo-v2.5-tts")
         m_lbl = QLabel("模型")
         m_lbl.setProperty("class", "input-label")
         col1.addWidget(m_lbl)
@@ -212,7 +212,7 @@ class SettingsWindow(QDialog):
         
         col2 = QVBoxLayout()
         self.xiaomi_voice_combo = QComboBox()
-        self.xiaomi_voice_combo.addItems(["mimo_default", "default_zh", "default_en"])
+        self.xiaomi_voice_combo.addItems(["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"])
         v_lbl = QLabel("音色")
         v_lbl.setProperty("class", "input-label")
         col2.addWidget(v_lbl)
@@ -229,16 +229,25 @@ class SettingsWindow(QDialog):
         xiaomi_layout.addWidget(b_lbl)
         xiaomi_layout.addWidget(self.xiaomi_base_input)
 
-        self.xiaomi_style_input = QLineEdit()
-        self.xiaomi_style_input.setPlaceholderText("可选：开心 / 粤语 / 东北话 / 变慢")
+        self.xiaomi_style_input = QTextEdit()
+        self.xiaomi_style_input.setFixedHeight(72)
+        self.xiaomi_style_input.setAcceptRichText(False)
+        self.xiaomi_style_input.setPlaceholderText("例如：温柔、东北话、(粤语)、用轻快上扬的语调朗读")
         s_lbl = QLabel("特殊风格 (Style)")
         s_lbl.setProperty("class", "input-label")
         xiaomi_layout.addWidget(s_lbl)
         xiaomi_layout.addWidget(self.xiaomi_style_input)
+        style_hint = QLabel(
+            "风格示例：开心/悲伤/愤怒/平静/冷漠；温柔/高冷/活泼/严肃/慵懒；"
+            "磁性/清亮/甜美/沙哑；夹子音/御姐音/正太音/大叔音；"
+            "东北话/四川话/河南话/粤语；孙悟空/林黛玉；(唱歌)"
+        )
+        style_hint.setProperty("class", "card-desc")
+        style_hint.setWordWrap(True)
+        xiaomi_layout.addWidget(style_hint)
 
         xiaomi_card = self.create_card("小米 MiMo 专属配置", "仅当上方提供商选择小米 MiMo 时生效。", xiaomi_layout)
         
-        # 使用 ScrollArea 包裹 TTS 页面以防高度超限
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
@@ -282,6 +291,21 @@ class SettingsWindow(QDialog):
         g_layout.addWidget(t_lbl)
         g_layout.addWidget(self.theme_combo)
 
+        # 快捷键配置区域
+        self.hotkey_show_edit = QKeySequenceEdit()
+        self.hotkey_show_edit.setToolTip("按键盘键组合设置唤醒热键")
+        show_lbl = QLabel("唤醒主界面快捷键")
+        show_lbl.setProperty("class", "input-label")
+        g_layout.addWidget(show_lbl)
+        g_layout.addWidget(self.hotkey_show_edit)
+
+        self.hotkey_snip_edit = QKeySequenceEdit()
+        self.hotkey_snip_edit.setToolTip("按键盘键组合设置截图翻译热键")
+        snip_lbl = QLabel("截图翻译快捷键")
+        snip_lbl.setProperty("class", "input-label")
+        g_layout.addWidget(snip_lbl)
+        g_layout.addWidget(self.hotkey_snip_edit)
+
         card = self.create_card("通用与外观", "调整应用程序的基础行为和视觉体验。", g_layout)
         layout.addWidget(card)
         layout.addStretch()
@@ -307,18 +331,28 @@ class SettingsWindow(QDialog):
         ai_tts_provider = config.get("AI_TTS_PROVIDER", "edge")
         self.ai_tts_provider_combo.setCurrentIndex(1 if ai_tts_provider == "xiaomi" else 0)
         self.xiaomi_key_input.setText(config.get("XIAOMI_TTS_API_KEY", ""))
-        self.xiaomi_base_input.setText(config.get("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"))
-        self.xiaomi_model_input.setText(config.get("XIAOMI_TTS_MODEL", "mimo-v2-tts"))
+        xiaomi_base_url = config.get("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
+        self.xiaomi_base_input.setText(xiaomi_base_url)
+        xiaomi_model = config.get("XIAOMI_TTS_MODEL", "mimo-v2.5-tts")
+        if xiaomi_model == "mimo-v2-tts":
+            xiaomi_model = "mimo-v2.5-tts"
+        self.xiaomi_model_input.setText(xiaomi_model)
         voice = config.get("XIAOMI_TTS_VOICE", "mimo_default")
         voice_index = self.xiaomi_voice_combo.findText(voice)
         self.xiaomi_voice_combo.setCurrentIndex(voice_index if voice_index >= 0 else 0)
-        self.xiaomi_style_input.setText(config.get("XIAOMI_TTS_STYLE", ""))
+        self.xiaomi_style_input.setPlainText(config.get("XIAOMI_TTS_STYLE", ""))
         
         player_engine = config.get("AUDIO_PLAYER", "pygame")
         self.player_combo.setCurrentIndex(1 if player_engine == "mpv" else 0)
             
         theme = config.get("THEME", "dark")
         self.theme_combo.setCurrentIndex(1 if theme == "light" else 0)
+        
+        # 加载快捷键
+        show_hk = config.get("HOTKEY_SHOW", "Alt+Q")
+        snip_hk = config.get("HOTKEY_SNIP", "Alt+E")
+        self.hotkey_show_edit.setKeySequence(QKeySequence(show_hk))
+        self.hotkey_snip_edit.setKeySequence(QKeySequence(snip_hk))
         
         # Apply theme immediately on load
         self.apply_theme_from_combo(self.theme_combo.currentIndex())
@@ -429,7 +463,7 @@ class SettingsWindow(QDialog):
                 font-size: 13px;
                 font-weight: 500;
             }}
-            QLineEdit, QComboBox {{
+            QLineEdit, QTextEdit, QComboBox, QKeySequenceEdit {{
                 background-color: {input_bg};
                 color: {text_main};
                 border: 1px solid {input_border};
@@ -437,7 +471,7 @@ class SettingsWindow(QDialog):
                 padding: 8px 12px;
                 font-size: 13px;
             }}
-            QLineEdit:focus, QComboBox:focus {{
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QKeySequenceEdit:focus {{
                 border: 1px solid {primary_bg};
             }}
             QComboBox::drop-down {{
@@ -445,7 +479,7 @@ class SettingsWindow(QDialog):
                 width: 30px;
             }}
             QComboBox::down-arrow {{
-                image: none; /* Can add a custom arrow icon if desired */
+                image: none;
                 border-left: 5px solid transparent;
                 border-right: 5px solid transparent;
                 border-top: 5px solid {text_desc};
@@ -505,10 +539,12 @@ class SettingsWindow(QDialog):
             "AI_TTS_PROVIDER": ai_tts_provider,
             "XIAOMI_TTS_API_KEY": self.xiaomi_key_input.text().strip(),
             "XIAOMI_TTS_BASE_URL": self.xiaomi_base_input.text().strip() or "https://token-plan-cn.xiaomimimo.com/v1",
-            "XIAOMI_TTS_MODEL": self.xiaomi_model_input.text().strip() or "mimo-v2-tts",
+            "XIAOMI_TTS_MODEL": self.xiaomi_model_input.text().strip() or "mimo-v2.5-tts",
             "XIAOMI_TTS_VOICE": self.xiaomi_voice_combo.currentText(),
-            "XIAOMI_TTS_STYLE": self.xiaomi_style_input.text().strip(),
-            "AUDIO_PLAYER": "mpv" if self.player_combo.currentIndex() == 1 else "pygame"
+            "XIAOMI_TTS_STYLE": self.xiaomi_style_input.toPlainText().strip(),
+            "AUDIO_PLAYER": "mpv" if self.player_combo.currentIndex() == 1 else "pygame",
+            "HOTKEY_SHOW": self.hotkey_show_edit.keySequence().toString(),
+            "HOTKEY_SNIP": self.hotkey_snip_edit.keySequence().toString()
         }
         save_app_config(new_config)
         QMessageBox.information(self, "成功", "设置已保存，立即生效！")

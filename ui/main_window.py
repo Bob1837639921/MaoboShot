@@ -17,8 +17,8 @@ from core.tts_engine import play_voice_worker, stop_tts_playback
 from core.translator import TranslatorWorker
 from ui.snipping_widget import SnippingWidget
 from core.ocr_engine import HAS_OCR
-from utils.win_api import (WM_HOTKEY, WM_CLIPBOARDUPDATE, HOTKEY_ID_Q, HOTKEY_ID_Z,
-                           force_focus_window, MOD_ALT, VK_Q, VK_Z)
+from utils.win_api import (WM_HOTKEY, WM_CLIPBOARDUPDATE, HOTKEY_ID_SHOW, HOTKEY_ID_SNIP,
+                           force_focus_window, parse_hotkey_string)
 
 class FloatingWindow(QWidget, Ui_FloatingWindow):
     request_translation_signal = Signal(str)
@@ -127,12 +127,41 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
     def _init_hotkeys(self):
         self.hwnd = int(self.winId())
-        if not ctypes.windll.user32.RegisterHotKey(self.hwnd, HOTKEY_ID_Q, MOD_ALT, VK_Q):
-            logger.warning("无法注册 Alt+Q，可能被占用！")
-        if not ctypes.windll.user32.RegisterHotKey(self.hwnd, HOTKEY_ID_Z, MOD_ALT, VK_Z):
-            logger.warning("无法注册 Alt+Z，可能被占用！")
-        if not ctypes.windll.user32.AddClipboardFormatListener(self.hwnd):
-            logger.warning("无法注册剪贴板监听！")
+        
+        # 先注销旧热键，以支持在运行时热重载
+        try:
+            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_SHOW)
+            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_SNIP)
+        except Exception:
+            pass
+            
+        config = load_app_config()
+        show_str = config.get("HOTKEY_SHOW", "Alt+Q")
+        snip_str = config.get("HOTKEY_SNIP", "Alt+E")
+        
+        mod_show, vk_show = parse_hotkey_string(show_str)
+        mod_snip, vk_snip = parse_hotkey_string(snip_str)
+        
+        if vk_show:
+            if not ctypes.windll.user32.RegisterHotKey(self.hwnd, HOTKEY_ID_SHOW, mod_show, vk_show):
+                logger.warning(f"无法注册唤醒热键 {show_str}，可能被占用！")
+        else:
+            logger.warning(f"唤醒热键 {show_str} 解析失败！")
+            
+        if vk_snip:
+            if not ctypes.windll.user32.RegisterHotKey(self.hwnd, HOTKEY_ID_SNIP, mod_snip, vk_snip):
+                logger.warning(f"无法注册截图热键 {snip_str}，可能被占用！")
+        else:
+            logger.warning(f"截图热键 {snip_str} 解析失败！")
+            
+        if not getattr(self, '_clipboard_listener_registered', False):
+            if ctypes.windll.user32.AddClipboardFormatListener(self.hwnd):
+                self._clipboard_listener_registered = True
+            else:
+                logger.warning("无法注册剪贴板监听！")
+                
+        # 联动更新 Placeholder 提示文案
+        self.input_edit.setPlaceholderText(f"在此输入 / 双击 Ctrl+C 划词 / {snip_str} 截图 / {show_str} 唤起...")
 
     def setup_tray(self):
         from ui.tray_icon import ManboShotTrayIcon
@@ -143,6 +172,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         if dialog.exec():
             # 保存并重启 worker 的客户端
             self.worker.reload_client()
+            self._init_hotkeys()  # 重新初始化热键与 Placeholder
+            self.tray_icon.setup_menu()  # 重新加载托盘菜单文案
             self.apply_theme()
 
     def handle_ocr_started(self):
@@ -485,9 +516,9 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
                 msg = ctypes.wintypes.MSG.from_address(int(message))
                 
                 if msg.message == WM_HOTKEY:
-                    if msg.wParam == HOTKEY_ID_Q:
+                    if msg.wParam == HOTKEY_ID_SHOW:
                         self.handle_show_window(reset=True)
-                    elif msg.wParam == HOTKEY_ID_Z:
+                    elif msg.wParam == HOTKEY_ID_SNIP:
                         self.start_snipping()
                 
                 elif msg.message == WM_CLIPBOARDUPDATE:
@@ -573,8 +604,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
     def closeEvent(self, event):
         try:
-            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_Q)
-            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_Z)
+            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_SHOW)
+            ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_SNIP)
             ctypes.windll.user32.RemoveClipboardFormatListener(self.hwnd)
         except Exception:
             pass
