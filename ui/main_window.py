@@ -83,7 +83,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.hide_results()
             self._update_window_width(text)
             self.adjustSize()
-            
+
+            self._show_translation_loading()
             self.request_translation_signal.emit(text)
 
     def _update_window_width(self, text=""):
@@ -100,6 +101,17 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.main_scroll.setMinimumHeight(0)
         self.main_scroll.setMaximumHeight(16777215)
         self.play_btn.hide()
+
+    def _show_translation_loading(self):
+        ai_enabled = bool(getattr(getattr(self, 'worker', None), 'db_client', None))
+        self.update_translation({
+            "doubao": "",
+            "google": "",
+            "phonetic": None,
+            "ai_enabled": ai_enabled,
+            "doubao_loading": ai_enabled,
+            "google_loading": True
+        })
 
     def show_results(self):
         self.main_scroll.show()
@@ -234,7 +246,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.hide_results()
             self._update_window_width(text)
             self.adjustSize()
-            
+
+            self._show_translation_loading()
             self.request_translation_signal.emit(text)
 
     def handle_clipboard_update(self, text, popup=True, ignore_move=False):
@@ -250,7 +263,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.hide_results()
         self._update_window_width(text)
         self.adjustSize()
-        
+
+        self._show_translation_loading()
         self.request_translation_signal.emit(text)
         if popup:
             self.handle_show_window(ignore_move=ignore_move)
@@ -387,7 +401,9 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
                 ai_html += f"<div style='margin-bottom: 8px;'><span style='color:{pt}; font-size:12px; background-color: {pb}; padding: 2px 6px; border-radius: 4px;'>{phonetic}</span></div>"
             
             if doubao_loading and not doubao:
-                ai_html += f"<div style='color: {placeholder}; font-style: italic;'>AI 思考中...</div>"
+                ai_html += f"<div style='color: {placeholder}; font-style: italic;'>AI 正在翻译...</div>"
+            elif doubao_loading:
+                ai_html += f"<div>{doubao}<span style='color: {placeholder};'>&#9612;</span></div>"
             else:
                 ai_html += f"<div>{doubao}</div>"
             

@@ -216,17 +216,21 @@ def play_voice_worker(text, status_signal=None):
         if status_signal:
             status_signal.emit(msg)
 
-    def preprocess_text_for_speech(t):
+    def preprocess_text_for_speech(t, add_prefix=False):
         if not t:
             return t
         # 拆分驼峰命名法 (e.g. setStyleSheet -> set Style Sheet)
         t = re.sub(r'([a-z])([A-Z])', r'\1 \2', t)
         # 将字母之间的连字符和下划线替换为空格 (e.g. hello-world -> hello world, foo_bar -> foo bar)
         t = re.sub(r'([a-zA-Z])[-_]+([a-zA-Z])', r'\1 \2', t)
+        if add_prefix:
+            # 在文本最前面插入一个静默标点，防止 TTS 引擎/音频设备初始化时吃掉第一个音节
+            has_zh = bool(re.search(r'[\u4e00-\u9fff]', t))
+            t = ('，' if has_zh else ', ') + t
         return t
 
-    # 我们直接把标点符号前缀的逻辑干掉，因为底层拼接已经足够可靠了，且避免前缀被Piper误伤
-    safe_text_for_speech = preprocess_text_for_speech(text)
+    # 云端 TTS (Edge / 小米) 需要前缀防止首字节被裁剪；Piper 分支单独处理
+    safe_text_for_speech = preprocess_text_for_speech(text, add_prefix=True)
     
     config = load_app_config()
     use_local_tts = config.get("USE_LOCAL_TTS", True)
@@ -337,7 +341,8 @@ def play_voice_worker(text, status_signal=None):
             if not current_model.exists():
                 current_model = model_cn
 
-            safe_text = "，" + safe_text_for_speech
+            # Piper 已经通过 preprocess_text_for_speech(add_prefix=True) 加了前缀，直接使用
+            safe_text = safe_text_for_speech
             
             if PIPER_EXE.exists():
                 cmd_gen = [str(PIPER_EXE), "--model", str(current_model), "--length_scale", "1.15", "--output_file", temp_wav]

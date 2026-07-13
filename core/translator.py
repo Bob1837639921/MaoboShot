@@ -1,6 +1,7 @@
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from PySide6.QtCore import QObject, Signal, Slot
 from openai import OpenAI
 import requests
@@ -64,6 +65,7 @@ def normalize_google_source_text(text: str) -> str:
 
     return normalized.lower() if normalized else text
 
+@lru_cache(maxsize=128)
 def google_translate_text(text: str, target: str) -> str:
     source_text = normalize_google_source_text(text) if target == 'zh-CN' else text
     last_error = None
@@ -285,7 +287,7 @@ class TranslatorWorker(QObject):
                             # 🛡️ 核心优化：高频流式输出节流，防止长文本导致的 Qt UI 线程卡死
                             now = time.time()
                             if now - last_ui_update > 0.1:
-                                refresh_ui({"doubao_loading": False})
+                                refresh_ui({"doubao_loading": True})
                                 last_ui_update = now
                 
                 # 循环结束后，确保最后一次完整结果被更新到 UI
@@ -297,8 +299,6 @@ class TranslatorWorker(QObject):
                 if self._current_task_id == task_id:
                     results["doubao"] = f"❌ 翻译出错: {e}"
                     refresh_ui({"doubao_loading": False})
-            
-            refresh_ui({"doubao_loading": False})
 
         # 🏃‍♂️ 任务 B: Google
         def task_google():

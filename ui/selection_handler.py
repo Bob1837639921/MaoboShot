@@ -1,32 +1,67 @@
 import re
 import threading
-from PySide6.QtCore import QObject, Qt, Slot, QMetaObject, Q_ARG
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from core.config import logger
 from core.translator import choose_google_translation_args, google_translate_text
 
 class SelectionTranslationHelper(QObject):
+    translation_ready = Signal(int, str, str)
+
     def __init__(self, window):
         super().__init__(window)
         self.window = window
+        self._selection_generation = 0
+        self._pending_selection = ""
+        self._translation_cache = {}
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(180)
+        self._debounce_timer.timeout.connect(self._start_pending_translation)
+        self.translation_ready.connect(self._apply_translation_result)
 
     def handle_selection_changed(self):
+        self._selection_generation += 1
+        self._debounce_timer.stop()
+
         # 如果当前没有翻译结果，不做处理
         if not getattr(self.window, '_last_results', None):
+            self._pending_selection = ""
             return
             
         selected_text = self.window.input_edit.textCursor().selectedText().strip()
         
         # 如果选中为空，恢复原始 HTML
         if not selected_text:
+            self._pending_selection = ""
             self.reset_results()
             return
             
         # 限制长度，防止大段文本翻译导致延迟
         if len(selected_text) > 100:
+            self._pending_selection = ""
+            self.reset_results()
             return
-            
-        # 启动后台线程翻译选中的词/短语
-        threading.Thread(target=self._translate_and_highlight_selection, args=(selected_text,), daemon=True).start()
+
+        self._pending_selection = selected_text
+        self._debounce_timer.start()
+
+    def _start_pending_translation(self):
+        selected_text = self._pending_selection
+        current_selection = self.window.input_edit.textCursor().selectedText().strip()
+        if not selected_text or current_selection != selected_text:
+            return
+
+        generation = self._selection_generation
+        cached = self._translation_cache.get(selected_text)
+        if cached:
+            self._apply_translation_result(generation, selected_text, cached)
+            return
+
+        threading.Thread(
+            target=self._translate_selection,
+            args=(generation, selected_text),
+            daemon=True
+        ).start()
 
     def reset_results(self):
         if hasattr(self.window, '_base_ai_html') and self.window._base_ai_html:
@@ -34,29 +69,31 @@ class SelectionTranslationHelper(QObject):
         if hasattr(self.window, '_base_google_html') and self.window._base_google_html:
             self.window.google_result_lbl.setText(self.window._base_google_html)
 
-    def _translate_and_highlight_selection(self, selected_text):
+    def _translate_selection(self, generation, selected_text):
         try:
             # 检测被选中文字的语言，进行翻译
-            source, target = choose_google_translation_args(selected_text)
+            _, target = choose_google_translation_args(selected_text)
             translated = google_translate_text(selected_text, target)
                 
             if not translated:
                 return
                 
-            # 回到主线程更新 UI 高亮
-            QMetaObject.invokeMethod(self, "_highlight_translated_text", 
-                                   Qt.QueuedConnection, 
-                                   Q_ARG(str, translated.strip()))
+            self.translation_ready.emit(generation, selected_text, translated.strip())
         except Exception as e:
             logger.error(f"选择高亮翻译出错: {e}")
 
-    @Slot(str)
-    def _highlight_translated_text(self, target_text):
-        # 获取当前正在选中的文本，如果用户已经取消选择，则不进行高亮
-        current_selection = self.window.input_edit.textCursor().selectedText().strip()
-        if not current_selection:
-            self.reset_results()
+    @Slot(int, str, str)
+    def _apply_translation_result(self, generation, source_text, target_text):
+        if generation != self._selection_generation:
             return
+
+        current_selection = self.window.input_edit.textCursor().selectedText().strip()
+        if current_selection != source_text:
+            return
+
+        self._translation_cache[source_text] = target_text
+        if len(self._translation_cache) > 64:
+            self._translation_cache.pop(next(iter(self._translation_cache)))
             
         # 寻找匹配并高亮
         words_to_highlight = [target_text]
