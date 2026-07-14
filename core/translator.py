@@ -3,7 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from PySide6.QtCore import QObject, Signal, Slot
-from openai import OpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 import requests
 from bs4 import BeautifulSoup
 from core.config import logger, load_app_config
@@ -28,6 +28,59 @@ GOOGLE_TRANSLATE_HEADERS = {
         "Chrome/126.0 Safari/537.36"
     )
 }
+
+AI_STREAM_TIMEOUT = 20
+AI_FALLBACK_TIMEOUT = 30
+
+
+class EmptyAIResponseError(RuntimeError):
+    pass
+
+
+def should_retry_ai_error(error: Exception) -> bool:
+    if isinstance(error, (EmptyAIResponseError, APITimeoutError, APIConnectionError)):
+        return True
+    if isinstance(error, APIStatusError):
+        status_code = getattr(error, "status_code", 0)
+        return status_code in (408, 409, 429) or status_code >= 500
+    return False
+
+
+def friendly_ai_error(error: Exception) -> str:
+    if isinstance(error, APITimeoutError):
+        return "AI 响应超时，请重试"
+    if isinstance(error, APIConnectionError):
+        return "AI 服务连接失败，请检查网络后重试"
+    if isinstance(error, EmptyAIResponseError):
+        return "AI 未返回内容，请重试"
+    if isinstance(error, APIStatusError):
+        status_code = getattr(error, "status_code", 0)
+        if status_code in (401, 403):
+            return "AI 配置无效，请检查 API Key"
+        if status_code == 404:
+            return "未找到 AI 模型或接口，请检查配置"
+        if status_code == 429:
+            return "AI 请求过于频繁，请稍后重试"
+        if status_code >= 500:
+            return "AI 服务暂时不可用，请稍后重试"
+    return "AI 翻译失败，请重试"
+
+
+def extract_ai_message_content(response) -> str:
+    if not getattr(response, "choices", None):
+        return ""
+    content = getattr(response.choices[0].message, "content", "") or ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(str(item.get("text", "")))
+            else:
+                parts.append(str(getattr(item, "text", "")))
+        return "".join(parts).strip()
+    return str(content).strip()
 
 def phonetic_symbol(text: str):
     """提取音标"""
@@ -220,7 +273,8 @@ class TranslatorWorker(QObject):
         if api_key:
             self.db_client = OpenAI(
                 api_key=api_key,
-                base_url=base_url
+                base_url=base_url,
+                max_retries=0
             )
             logger.info("已加载 AI 大模型配置。")
         else:
@@ -241,64 +295,99 @@ class TranslatorWorker(QObject):
         
         results = {
             "doubao": "", 
+            "doubao_error": "",
             "google": "", 
             "phonetic": phonetic_symbol(text),
             "ai_enabled": ai_enabled
+        }
+        loading_state = {
+            "doubao_loading": ai_enabled,
+            "doubao_retrying": False,
+            "google_loading": True
         }
         google_source, google_target = choose_google_translation_args(text)
 
         def refresh_ui(loading_status=None):
             if self._current_task_id == task_id:
-                out = dict(results)
                 if loading_status:
-                    out.update(loading_status)
+                    loading_state.update(loading_status)
+                out = dict(results)
+                out.update(loading_state)
                 self.finished_signal.emit(out)
 
-        # 🚀 任务 A: 豆包大模型
+        # AI 翻译先尝试流式输出；超时、连接失败或空响应时自动降级为普通请求。
         def task_doubao():
             if not ai_enabled:
                 refresh_ui({"doubao_loading": False})
                 return
             
             system_prompt = "你是一个专业翻译。请将用户输入翻译为中文或英文，只输出译文本身，不要说多余的话。如果原文排版混乱、缺乏换行或全部粘连在一起（如PDF复制文本），请在翻译时根据语义进行合理的【分段和排版优化】，使其结构清晰、易读。"
-            try:
-                response = self.db_client.chat.completions.create(
-                    model=self.model_ep,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": text}
-                    ],
-                    timeout=15,
-                    stream=True
-                )
-                collected_messages = []
-                last_ui_update = 0
-                for chunk in response:
-                    # 🛡️ 核心优化：检测当前任务是否已被废弃。如果已被新请求覆盖，立即切断网络流迭代，释放连接并优雅退出！
-                    if self._current_task_id != task_id:
-                        logger.info(f"Task {task_id} superseded by {self._current_task_id}. Breaking stream.")
-                        break
-                    
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        collected_messages.append(chunk.choices[0].delta.content)
-                        if self._current_task_id == task_id:
-                            results["doubao"] = "".join(collected_messages)
-                            
-                            # 🛡️ 核心优化：高频流式输出节流，防止长文本导致的 Qt UI 线程卡死
-                            now = time.time()
-                            if now - last_ui_update > 0.1:
-                                refresh_ui({"doubao_loading": True})
-                                last_ui_update = now
-                
-                # 循环结束后，确保最后一次完整结果被更新到 UI
-                if self._current_task_id == task_id:
-                    refresh_ui({"doubao_loading": False})
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text}
+            ]
 
-            except Exception as e:
-                logger.error(f"豆包 API 请求错误: {e}", exc_info=True)
-                if self._current_task_id == task_id:
-                    results["doubao"] = f"❌ 翻译出错: {e}"
-                    refresh_ui({"doubao_loading": False})
+            for attempt in range(2):
+                if self._current_task_id != task_id:
+                    return
+
+                use_stream = attempt == 0
+                results["doubao"] = ""
+                results["doubao_error"] = ""
+                if attempt:
+                    refresh_ui({"doubao_loading": True, "doubao_retrying": True})
+
+                try:
+                    response = self.db_client.chat.completions.create(
+                        model=self.model_ep,
+                        messages=messages,
+                        timeout=AI_STREAM_TIMEOUT if use_stream else AI_FALLBACK_TIMEOUT,
+                        stream=use_stream
+                    )
+
+                    if use_stream:
+                        collected_messages = []
+                        last_ui_update = 0
+                        for chunk in response:
+                            if self._current_task_id != task_id:
+                                logger.info(
+                                    f"Task {task_id} superseded by {self._current_task_id}. Breaking stream."
+                                )
+                                return
+
+                            if chunk.choices and chunk.choices[0].delta.content:
+                                collected_messages.append(chunk.choices[0].delta.content)
+                                results["doubao"] = "".join(collected_messages)
+
+                                now = time.time()
+                                if now - last_ui_update > 0.1:
+                                    refresh_ui({"doubao_loading": True})
+                                    last_ui_update = now
+                        translated = "".join(collected_messages).strip()
+                    else:
+                        translated = extract_ai_message_content(response)
+
+                    if not translated:
+                        raise EmptyAIResponseError("AI returned an empty response")
+
+                    if self._current_task_id == task_id:
+                        results["doubao"] = translated
+                        results["doubao_error"] = ""
+                        refresh_ui({"doubao_loading": False, "doubao_retrying": False})
+                    return
+
+                except Exception as e:
+                    if self._current_task_id != task_id:
+                        return
+                    if attempt == 0 and should_retry_ai_error(e):
+                        logger.warning(f"AI 首次请求失败，正在自动重试: {e}")
+                        continue
+
+                    logger.error(f"AI API 请求错误: {e}", exc_info=True)
+                    results["doubao"] = ""
+                    results["doubao_error"] = friendly_ai_error(e)
+                    refresh_ui({"doubao_loading": False, "doubao_retrying": False})
+                    return
 
         # 🏃‍♂️ 任务 B: Google
         def task_google():

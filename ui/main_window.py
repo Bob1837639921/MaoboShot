@@ -91,16 +91,30 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         if not text:
             text = getattr(self, 'current_text_for_speech', '') or ''
         char_count = sum(2 if '\u4e00' <= c <= '\u9fff' else 1 for c in text)
-        # 动态宽度：单个字最窄 340，长句最大 800
-        target_width = max(340, min(800, 340 + int(char_count * 8)))
+        target_width = max(380, min(780, 380 + int(char_count * 7)))
         self.setFixedWidth(target_width)
         return target_width
 
     def hide_results(self):
+        self._show_translation_workspace()
         self.main_scroll.hide()
         self.main_scroll.setMinimumHeight(0)
         self.main_scroll.setMaximumHeight(16777215)
         self.play_btn.hide()
+        self.ai_copy_btn.setEnabled(False)
+        self.ai_copy_btn.show()
+        self.ai_retry_btn.hide()
+        self.google_copy_btn.setEnabled(False)
+        self.ai_copy_btn.setText("复制")
+        self.google_copy_btn.setText("复制")
+        self.status_label.setText("就绪")
+        self.translate_btn.setText("翻译")
+
+    def _show_translation_workspace(self):
+        self.ocr_panel.hide()
+        self.input_edit.show()
+        self.mode_label.show()
+        self.translate_btn.show()
 
     def _show_translation_loading(self):
         ai_enabled = bool(getattr(getattr(self, 'worker', None), 'db_client', None))
@@ -114,12 +128,29 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         })
 
     def show_results(self):
+        self._show_translation_workspace()
         self.main_scroll.show()
         ai_enabled = getattr(self, '_last_results', {}).get("ai_enabled", True)
-        self.ai_title_lbl.setVisible(ai_enabled)
-        self.ai_result_lbl.setVisible(ai_enabled)
-        self.google_title_lbl.show()
-        self.google_result_lbl.show()
+        self.ai_card.setVisible(ai_enabled)
+        self.google_card.show()
+
+    def copy_result(self, source):
+        results = getattr(self, '_last_results', {}) or {}
+        key = "doubao" if source == "ai" else "google"
+        text = (results.get(key, "") or "").strip()
+        if not text:
+            return
+
+        QApplication.clipboard().setText(text)
+        button = self.ai_copy_btn if source == "ai" else self.google_copy_btn
+        button.setText("已复制")
+        QTimer.singleShot(1200, lambda btn=button: btn.setText("复制"))
+
+    def retry_ai_translation(self):
+        if not self.input_edit.toPlainText().strip():
+            return
+        self.ai_retry_btn.hide()
+        self.on_translate_clicked()
 
     def apply_theme(self):
         config = load_app_config()
@@ -172,8 +203,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             else:
                 logger.warning("无法注册剪贴板监听！")
                 
-        # 联动更新 Placeholder 提示文案
-        self.input_edit.setPlaceholderText(f"在此输入 / 双击 Ctrl+C 划词 / {snip_str} 截图 / {show_str} 唤起...")
+        self.input_edit.setPlaceholderText("输入或粘贴需要翻译的内容")
 
     def setup_tray(self):
         from ui.tray_icon import ManboShotTrayIcon
@@ -189,46 +219,41 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.apply_theme()
 
     def handle_ocr_started(self):
-        # OCR刚开始时：立即唤醒主界面，显示提取中提示
-        self.input_edit.blockSignals(True)
-        self.input_edit.setText("🖼️ 正在提取图片文字, 请稍候...")
-        self.input_edit.blockSignals(False)
-        
-        placeholder = self.html_vars.get("placeholder", "#888888")
-        html = f"<div style='color: {placeholder}; font-style: italic;'>⚡ 图像 OCR 识别中...</div>"
-        
-        self.ai_result_lbl.setText(html)
-        self.ai_title_lbl.show()
-        self.ai_result_lbl.show()
-        self.google_title_lbl.hide()
-        self.google_result_lbl.hide()
-        self.main_scroll.show()
+        self.input_edit.hide()
+        self.mode_label.hide()
+        self.translate_btn.hide()
+        self.main_scroll.hide()
         self.play_btn.hide()
-        
-        # 强制缩小窗口，解决遗留的过大弹窗问题
-        self._update_window_width("🖼️ 正在提取图片文字, 请稍候...")
+        self.ocr_status_title.setText("正在识别截图")
+        self.ocr_status_desc.setText("正在提取文字并恢复排版")
+        self.ocr_status_dot.setStyleSheet(
+            f"color: {self.html_vars.get('primary', '#2563EB')}; font-size: 9px;"
+        )
+        self.ocr_retry_btn.hide()
+        self.ocr_progress.show()
+        self.ocr_panel.show()
+        self.status_label.setText("识别中")
+
+        self.setFixedWidth(380)
         self.adjustSize()
         self.handle_show_window()
 
     def handle_ocr_result(self, text):
         logger.info("OCR完成，触发翻译")
         if not text or not text.strip():
-            self.input_edit.blockSignals(True)
-            self.input_edit.setText("⚠️ 未在截图区域识别到任何文字。")
-            self.input_edit.blockSignals(False)
-            
-            card_bg = self.html_vars.get("card_bg", "rgba(0,0,0,0.15)")
-            placeholder = self.html_vars.get("placeholder", "#888888")
-            html = f"<div style='background-color: {card_bg}; padding: 10px; border-radius: 8px;'><div style='color: {placeholder}; font-style: italic;'>请重新截图尝试。</div></div>"
-            self.ai_result_lbl.setText(html)
-            self.ai_title_lbl.show()
-            self.ai_result_lbl.show()
-            self.google_title_lbl.hide()
-            self.google_result_lbl.hide()
-            self.main_scroll.show()
+            self.ocr_status_title.setText("未识别到文字")
+            self.ocr_status_desc.setText("请调整选区，确保文字清晰后重试")
+            self.ocr_status_dot.setStyleSheet(
+                f"color: {self.html_vars.get('danger', '#DC2626')}; font-size: 9px;"
+            )
+            self.ocr_progress.hide()
+            self.ocr_retry_btn.show()
+            self.ocr_panel.show()
+            self.status_label.setText("需要重试")
             self.adjustSize()
             return
-            
+
+        self._show_translation_workspace()
         self.handle_clipboard_update(text, popup=True, ignore_move=True)
 
     def start_snipping(self):
@@ -252,6 +277,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
     def handle_clipboard_update(self, text, popup=True, ignore_move=False):
         if not text: return
+
+        self._show_translation_workspace()
         
         self.input_edit.blockSignals(True)
         self.input_edit.setText(text)
@@ -279,7 +306,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         if not screen:
             screen = QGuiApplication.primaryScreen()
         screen_geometry = screen.availableGeometry()
-        max_scroll_height = max(300, min(800, int(screen_geometry.height() * 0.8)))
+        max_scroll_height = max(220, min(640, int(screen_geometry.height() * 0.72)))
         self.main_scroll.setMaximumHeight(max_scroll_height)
         
         # 强制清空内容，恢复初始状态
@@ -357,6 +384,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self._last_results = results
         
         doubao_raw = results.get("doubao", "") or ""
+        doubao_error = results.get("doubao_error", "") or ""
         doubao_escaped = html_utils.escape(doubao_raw)
         doubao_escaped = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', doubao_escaped)
         doubao = doubao_escaped.replace("\n", "<br>")
@@ -364,8 +392,18 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         phonetic = html_utils.escape(results.get("phonetic", "") or "")
         
         doubao_loading = results.get("doubao_loading", False)
+        doubao_retrying = results.get("doubao_retrying", False)
         google_loading = results.get("google_loading", False)
         ai_enabled = results.get("ai_enabled", True)
+        is_loading = doubao_loading or google_loading
+
+        self.translate_btn.setText("翻译中..." if is_loading else "翻译")
+        if is_loading:
+            self.status_label.setText("翻译中")
+        elif doubao_error or (ai_enabled and not doubao_raw) or (results.get("google", "") or "").startswith("❌"):
+            self.status_label.setText("部分失败")
+        else:
+            self.status_label.setText("已完成")
         
         # 智能动态音标：如果输入的是中文，没有生成音标，但翻译结果是简短的英文，提取英文的音标
         if not phonetic:
@@ -387,12 +425,13 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         
         # AI 结果分立卡片渲染
         if not ai_enabled:
-            self.ai_title_lbl.hide()
-            self.ai_result_lbl.hide()
+            self.ai_card.hide()
+            self.ai_copy_btn.setEnabled(False)
+            self.ai_retry_btn.hide()
             self._base_ai_html = ""
         else:
-            self.ai_title_lbl.show()
-            self.ai_result_lbl.show()
+            self.ai_title_lbl.setText("AI 翻译")
+            self.ai_card.show()
             
             ai_html = ""
             if phonetic:
@@ -400,19 +439,32 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
                 pt = self.html_vars.get('phonetic_text', '#aaaaaa')
                 ai_html += f"<div style='margin-bottom: 8px;'><span style='color:{pt}; font-size:12px; background-color: {pb}; padding: 2px 6px; border-radius: 4px;'>{phonetic}</span></div>"
             
-            if doubao_loading and not doubao:
-                ai_html += f"<div style='color: {placeholder}; font-style: italic;'>AI 正在翻译...</div>"
+            display_error = doubao_error
+            if not doubao_loading and not doubao_raw and not display_error:
+                display_error = "AI 未返回内容，请重试"
+
+            if doubao_retrying and not doubao:
+                ai_html += f"<div style='color: {placeholder};'>AI 响应较慢，正在自动重试...</div>"
+            elif doubao_loading and not doubao:
+                ai_html += f"<div style='color: {placeholder};'>AI 正在翻译...</div>"
             elif doubao_loading:
                 ai_html += f"<div>{doubao}<span style='color: {placeholder};'>&#9612;</span></div>"
+            elif display_error:
+                danger = self.html_vars.get('danger', '#DC2626')
+                ai_html += f"<div style='color: {danger}; font-weight: 600;'>翻译失败</div>"
+                ai_html += f"<div style='color: {placeholder}; margin-top: 4px;'>{html_utils.escape(display_error)}</div>"
             else:
                 ai_html += f"<div>{doubao}</div>"
             
             self.ai_result_lbl.setText(ai_html)
             self._base_ai_html = ai_html
+            self.ai_copy_btn.setEnabled(bool(doubao_raw) and not doubao_loading)
+            self.ai_copy_btn.setVisible(not bool(display_error))
+            self.ai_retry_btn.setVisible(bool(display_error) and not doubao_loading)
 
         # Google 结果分立卡片渲染
-        self.google_title_lbl.show()
-        self.google_result_lbl.show()
+        self.google_title_lbl.setText("Google 翻译")
+        self.google_card.show()
         self.main_scroll.show()
         
         gg_html = ""
@@ -423,6 +475,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             
         self.google_result_lbl.setText(gg_html)
         self._base_google_html = gg_html
+        self.google_copy_btn.setEnabled(bool(results.get("google", "")) and not google_loading)
         
         self.play_btn.show()
         
@@ -499,12 +552,12 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
     def update_play_btn_status(self, text):
         if text == "reset":
-            self.play_btn.setText("🔊 朗读原文")
+            self.play_btn.setText("朗读原文")
             self.play_btn.setEnabled(True)
             self.is_playing_tts = False
         else:
             # 播放中按钮文本提示打断操作，并保持 Enabled=True 允许点击打断
-            self.play_btn.setText(f"⏹️ 停止播放 ({text})")
+            self.play_btn.setText(f"停止播放 · {text}")
             self.play_btn.setEnabled(True)
             self.is_playing_tts = True
 

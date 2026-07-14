@@ -8,8 +8,8 @@ from core.config import load_app_config, save_app_config, ICON_PATH
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("⚙️ 设置 - ManboShot")
-        self.setFixedSize(750, 580)
+        self.setWindowTitle("设置 · ManboShot")
+        self.setFixedSize(820, 620)
         
         icon_file = ICON_PATH / "icon.ico"
         if icon_file.exists():
@@ -27,24 +27,45 @@ class SettingsWindow(QDialog):
         main_layout.setSpacing(0)
 
         # ================= Sidebar =================
+        self.sidebar_panel = QFrame()
+        self.sidebar_panel.setObjectName("sidebarPanel")
+        self.sidebar_panel.setFixedWidth(190)
+        sidebar_layout = QVBoxLayout(self.sidebar_panel)
+        sidebar_layout.setContentsMargins(14, 24, 14, 18)
+        sidebar_layout.setSpacing(2)
+
+        self.sidebar_brand = QLabel("ManboShot")
+        self.sidebar_brand.setObjectName("sidebarBrand")
+        self.sidebar_caption = QLabel("偏好设置")
+        self.sidebar_caption.setObjectName("sidebarCaption")
+
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(200)
         self.sidebar.setFocusPolicy(Qt.NoFocus)
         self.sidebar.currentRowChanged.connect(self.change_page)
 
-        items = ["🤖 AI 翻译模型", "🔊 语音与 TTS", "⚙️ 通用与外观"]
+        items = ["AI 翻译", "语音与 TTS", "通用设置"]
         for item_text in items:
             item = QListWidgetItem(item_text)
-            item.setSizeHint(QSize(200, 50))
+            item.setSizeHint(QSize(150, 44))
             self.sidebar.addItem(item)
+
+        sidebar_layout.addWidget(self.sidebar_brand)
+        sidebar_layout.addWidget(self.sidebar_caption)
+        sidebar_layout.addSpacing(22)
+        sidebar_layout.addWidget(self.sidebar)
 
         # ================= Right Content Area =================
         self.right_widget = QWidget()
         self.right_widget.setObjectName("rightWidget")
         right_layout = QVBoxLayout(self.right_widget)
-        right_layout.setContentsMargins(30, 30, 30, 20)
-        right_layout.setSpacing(20)
+        right_layout.setContentsMargins(28, 24, 28, 20)
+        right_layout.setSpacing(16)
+
+        self.page_title = QLabel()
+        self.page_title.setObjectName("pageTitle")
+        self.page_description = QLabel()
+        self.page_description.setObjectName("pageDescription")
 
         self.stacked_widget = QStackedWidget()
         
@@ -73,16 +94,27 @@ class SettingsWindow(QDialog):
         btn_layout.addWidget(self.cancel_btn)
         btn_layout.addWidget(self.save_btn)
 
+        right_layout.addWidget(self.page_title)
+        right_layout.addWidget(self.page_description)
         right_layout.addWidget(self.stacked_widget)
         right_layout.addLayout(btn_layout)
 
-        main_layout.addWidget(self.sidebar)
+        main_layout.addWidget(self.sidebar_panel)
         main_layout.addWidget(self.right_widget)
 
         self.sidebar.setCurrentRow(0)
 
     def change_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
+        titles = ["AI 翻译", "语音与 TTS", "通用设置"]
+        descriptions = [
+            "连接兼容 OpenAI 格式的模型服务",
+            "选择朗读引擎、服务商与声音风格",
+            "管理外观、快捷键与音频播放方式",
+        ]
+        if 0 <= index < len(titles):
+            self.page_title.setText(titles[index])
+            self.page_description.setText(descriptions[index])
 
     def create_card(self, title, description, inner_layout):
         card = QFrame()
@@ -361,41 +393,43 @@ class SettingsWindow(QDialog):
         is_light = (index == 1)
         
         if is_light:
-            bg_main = "#f4f5f7"
-            bg_sidebar = "#e9eaed"
-            bg_card = "#ffffff"
-            text_main = "#172b4d"
-            text_desc = "#5e6c84"
-            border_col = "#dfe1e6"
-            input_bg = "#fafbfc"
-            input_border = "#dfe1e6"
-            list_hover = "#dce0e5"
-            list_selected = "#ffffff"
-            list_sel_text = "#0052cc"
-            btn_bg = "#f4f5f7"
-            btn_hover = "#ebecf0"
-            btn_text = "#42526e"
-            primary_bg = "#0052cc"
-            primary_hover = "#0065ff"
-            divider_col = "#ebecf0"
+            bg_main = "#F7F8FA"
+            bg_sidebar = "#171A21"
+            bg_card = "#FFFFFF"
+            text_main = "#182033"
+            text_desc = "#6B7280"
+            sidebar_text = "#C9D0DC"
+            border_col = "#DCE1E8"
+            input_bg = "#FBFCFD"
+            input_border = "#D6DCE5"
+            list_hover = "#242A35"
+            list_selected = "#2563EB"
+            list_sel_text = "#FFFFFF"
+            btn_bg = "#EEF1F5"
+            btn_hover = "#E2E7EE"
+            btn_text = "#374151"
+            primary_bg = "#2563EB"
+            primary_hover = "#1D4ED8"
+            divider_col = "#E8EBF0"
         else:
-            bg_main = "#1e1e1e"
-            bg_sidebar = "#252526"
-            bg_card = "#2d2d2d"
-            text_main = "#ffffff"
-            text_desc = "#aaaaaa"
-            border_col = "#3e3e42"
-            input_bg = "#3c3c3c"
-            input_border = "#555555"
-            list_hover = "#2a2d2e"
-            list_selected = "#37373d"
-            list_sel_text = "#ffffff"
-            btn_bg = "#3a3a3a"
-            btn_hover = "#4a4a4a"
-            btn_text = "#ffffff"
-            primary_bg = "#0e639c"
-            primary_hover = "#1177bb"
-            divider_col = "#3e3e42"
+            bg_main = "#181A1F"
+            bg_sidebar = "#111318"
+            bg_card = "#22252B"
+            text_main = "#F3F4F6"
+            text_desc = "#9CA3AF"
+            sidebar_text = "#B7BFCC"
+            border_col = "#383E49"
+            input_bg = "#292D35"
+            input_border = "#424955"
+            list_hover = "#242932"
+            list_selected = "#3B82F6"
+            list_sel_text = "#FFFFFF"
+            btn_bg = "#2C313A"
+            btn_hover = "#373D48"
+            btn_text = "#E5E7EB"
+            primary_bg = "#3B82F6"
+            primary_hover = "#60A5FA"
+            divider_col = "#343A44"
 
         self.setStyleSheet(f"""
             QDialog {{
@@ -404,21 +438,33 @@ class SettingsWindow(QDialog):
                 font-family: 'Segoe UI', 'Microsoft YaHei';
             }}
             
-            /* Sidebar styling */
-            QListWidget#sidebar {{
+            QFrame#sidebarPanel {{
                 background-color: {bg_sidebar};
                 border: none;
                 border-right: 1px solid {border_col};
+            }}
+            QLabel#sidebarBrand {{
+                color: #FFFFFF;
+                font-size: 16px;
+                font-weight: 700;
+            }}
+            QLabel#sidebarCaption {{
+                color: {sidebar_text};
+                font-size: 11px;
+            }}
+
+            QListWidget#sidebar {{
+                background-color: transparent;
+                border: none;
                 outline: none;
-                padding-top: 15px;
             }}
             QListWidget#sidebar::item {{
-                color: {text_main};
-                padding: 10px 20px;
-                margin: 5px 10px;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: 500;
+                color: {sidebar_text};
+                padding: 8px 12px;
+                margin: 3px 0;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
             }}
             QListWidget#sidebar::item:hover {{
                 background-color: {list_hover};
@@ -426,25 +472,34 @@ class SettingsWindow(QDialog):
             QListWidget#sidebar::item:selected {{
                 background-color: {list_selected};
                 color: {list_sel_text};
-                font-weight: bold;
-                border: 1px solid {border_col};
+                font-weight: 700;
             }}
             
             /* Right Area */
             QWidget#rightWidget {{
                 background-color: {bg_main};
             }}
+            QLabel#pageTitle {{
+                color: {text_main};
+                font-size: 20px;
+                font-weight: 700;
+            }}
+            QLabel#pageDescription {{
+                color: {text_desc};
+                font-size: 12px;
+                margin-bottom: 5px;
+            }}
 
             /* Card styling */
             QFrame.settings-card {{
                 background-color: {bg_card};
                 border: 1px solid {border_col};
-                border-radius: 12px;
+                border-radius: 8px;
             }}
             QLabel.card-title {{
                 color: {text_main};
-                font-size: 16px;
-                font-weight: bold;
+                font-size: 15px;
+                font-weight: 700;
             }}
             QLabel.card-desc {{
                 color: {text_desc};
@@ -470,6 +525,7 @@ class SettingsWindow(QDialog):
                 border-radius: 6px;
                 padding: 8px 12px;
                 font-size: 13px;
+                selection-background-color: {primary_bg};
             }}
             QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QKeySequenceEdit:focus {{
                 border: 1px solid {primary_bg};
@@ -494,7 +550,7 @@ class SettingsWindow(QDialog):
                 border-radius: 6px;
                 padding: 8px 20px;
                 font-size: 13px;
-                font-weight: bold;
+                font-weight: 600;
             }}
             QPushButton:hover {{
                 background-color: {btn_hover};

@@ -1,72 +1,136 @@
-import os
-from PySide6.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton,
-                               QFrame, QGraphicsDropShadowEffect, QScrollArea, QWidget)
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtWidgets import (
+    QAbstractScrollArea,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QTextEdit,
+    QVBoxLayout,
+)
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor
+
 
 class Ui_FloatingWindow:
     def setupUi(self, window):
         window.main_layout = QVBoxLayout()
-        # 预留外边距给阴影效果
-        window.main_layout.setContentsMargins(20, 20, 20, 20)
-        
+        window.main_layout.setContentsMargins(12, 12, 12, 12)
+
         window.container = QFrame()
         window.container.setObjectName("container")
-        
-        # 增加硬件级窗口阴影
+
         shadow = QGraphicsDropShadowEffect(window)
-        shadow.setBlurRadius(30)
+        shadow.setBlurRadius(34)
         shadow.setXOffset(0)
-        shadow.setYOffset(10)
-        shadow.setColor(QColor(0, 0, 0, 120))
+        shadow.setYOffset(8)
+        shadow.setColor(QColor(0, 0, 0, 85))
         window.container.setGraphicsEffect(shadow)
-        
+
         window.content_layout = QVBoxLayout()
-        window.content_layout.setContentsMargins(15, 15, 15, 15)
-        window.content_layout.setSpacing(12)
+        window.content_layout.setContentsMargins(16, 14, 16, 16)
+        window.content_layout.setSpacing(10)
 
-        # === 顶部拖拽把手与控制栏 ===
         window.header_layout = QHBoxLayout()
-        window.header_layout.setContentsMargins(0, 0, 0, 0)
-        
-        window.title_label = QLabel("✨ ManboShot")
-        
-        window.close_btn = QPushButton("×")
-        window.close_btn.setFixedSize(24, 24)
-        window.close_btn.setCursor(Qt.PointingHandCursor)
-        window.close_btn.clicked.connect(window.hide)
-        
-        window.header_layout.addWidget(window.title_label)
-        window.header_layout.addStretch()
-        window.header_layout.addWidget(window.close_btn)
+        window.header_layout.setContentsMargins(0, 0, 0, 2)
+        window.header_layout.setSpacing(8)
 
-        # === 输入框 ===
-        window.input_edit = QTextEdit()
-        window.input_edit.setPlaceholderText("在此输入 / 双击 Ctrl+C 划词 / Alt+E 截图 / Alt+Q 唤起...")
-        window.input_edit.setMaximumHeight(100)
-        window.input_edit.setMinimumHeight(60)
-        
-        # === 快捷工具栏 (紧贴输入框下方) ===
-        window.toolbar_layout = QHBoxLayout()
-        window.toolbar_layout.setContentsMargins(2, 0, 2, 0)
-        
-        window.settings_btn = QPushButton("⚙️")
+        window.brand_mark = QFrame()
+        window.brand_mark.setObjectName("brandMark")
+        window.brand_mark.setFixedSize(4, 22)
+
+        window.title_label = QLabel("ManboShot")
+        window.status_label = QLabel("就绪")
+        window.status_label.setObjectName("statusLabel")
+
+        window.settings_btn = QPushButton("⚙")
+        window.settings_btn.setObjectName("headerToolButton")
         window.settings_btn.setFixedSize(28, 28)
-        window.settings_btn.setToolTip("设置中心")
+        window.settings_btn.setToolTip("设置")
         window.settings_btn.setCursor(Qt.PointingHandCursor)
         window.settings_btn.clicked.connect(window.show_settings)
 
-        window.translate_btn = QPushButton("✈ 翻译 (Enter)")
-        window.translate_btn.setFixedHeight(30)
+        window.close_btn = QPushButton("×")
+        window.close_btn.setObjectName("closeButton")
+        window.close_btn.setFixedSize(28, 28)
+        window.close_btn.setToolTip("隐藏窗口")
+        window.close_btn.setCursor(Qt.PointingHandCursor)
+        window.close_btn.clicked.connect(window.hide)
+
+        window.header_layout.addWidget(window.brand_mark)
+        window.header_layout.addWidget(window.title_label)
+        window.header_layout.addStretch()
+        window.header_layout.addWidget(window.status_label)
+        window.header_layout.addWidget(window.settings_btn)
+        window.header_layout.addWidget(window.close_btn)
+
+        window.input_edit = QTextEdit()
+        window.input_edit.setObjectName("translationInput")
+        window.input_edit.setPlaceholderText("输入或粘贴需要翻译的内容")
+        window.input_edit.setAcceptRichText(False)
+        window.input_edit.setMinimumHeight(72)
+        window.input_edit.setMaximumHeight(120)
+
+        window.toolbar_layout = QHBoxLayout()
+        window.toolbar_layout.setContentsMargins(0, 0, 0, 2)
+        window.toolbar_layout.setSpacing(8)
+
+        window.mode_label = QLabel("自动识别语言")
+        window.mode_label.setObjectName("modeLabel")
+
+        window.translate_btn = QPushButton("翻译")
+        window.translate_btn.setObjectName("translateButton")
+        window.translate_btn.setFixedSize(96, 34)
         window.translate_btn.setCursor(Qt.PointingHandCursor)
         window.translate_btn.clicked.connect(window.on_translate_clicked)
-        
-        window.toolbar_layout.addWidget(window.settings_btn)
+
+        window.toolbar_layout.addWidget(window.mode_label)
         window.toolbar_layout.addStretch()
         window.toolbar_layout.addWidget(window.translate_btn)
 
-        # === 结果展示区域 ===
-        from PySide6.QtWidgets import QAbstractScrollArea
+        window.ocr_panel = QFrame()
+        window.ocr_panel.setObjectName("ocrPanel")
+        ocr_layout = QVBoxLayout(window.ocr_panel)
+        ocr_layout.setContentsMargins(16, 15, 16, 15)
+        ocr_layout.setSpacing(7)
+
+        ocr_header = QHBoxLayout()
+        ocr_header.setContentsMargins(0, 0, 0, 0)
+        ocr_header.setSpacing(8)
+
+        window.ocr_status_dot = QLabel("●")
+        window.ocr_status_dot.setObjectName("ocrStatusDot")
+        window.ocr_status_dot.setFixedWidth(10)
+        window.ocr_status_title = QLabel("正在识别截图")
+        window.ocr_status_title.setObjectName("ocrStatusTitle")
+
+        window.ocr_retry_btn = QPushButton("重新截图")
+        window.ocr_retry_btn.setObjectName("ocrRetryButton")
+        window.ocr_retry_btn.setFixedSize(72, 28)
+        window.ocr_retry_btn.setCursor(Qt.PointingHandCursor)
+        window.ocr_retry_btn.clicked.connect(window.start_snipping)
+
+        ocr_header.addWidget(window.ocr_status_dot)
+        ocr_header.addWidget(window.ocr_status_title)
+        ocr_header.addStretch()
+        ocr_header.addWidget(window.ocr_retry_btn)
+
+        window.ocr_status_desc = QLabel("正在提取文字并恢复排版")
+        window.ocr_status_desc.setObjectName("ocrStatusDescription")
+        window.ocr_progress = QProgressBar()
+        window.ocr_progress.setObjectName("ocrProgress")
+        window.ocr_progress.setRange(0, 0)
+        window.ocr_progress.setTextVisible(False)
+        window.ocr_progress.setFixedHeight(4)
+
+        ocr_layout.addLayout(ocr_header)
+        ocr_layout.addWidget(window.ocr_status_desc)
+        ocr_layout.addSpacing(2)
+        ocr_layout.addWidget(window.ocr_progress)
+        window.ocr_panel.hide()
+
         window.main_scroll = QScrollArea()
         window.main_scroll.setWidgetResizable(True)
         window.main_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -74,217 +138,319 @@ class Ui_FloatingWindow:
         window.main_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         window.main_scroll.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         window.main_scroll.setAttribute(Qt.WA_TranslucentBackground)
-        
+
         window.scroll_content = QFrame()
-        window.scroll_content.setObjectName("scroll_content")
+        window.scroll_content.setObjectName("scrollContent")
         window.scroll_layout = QVBoxLayout(window.scroll_content)
-        window.scroll_layout.setContentsMargins(0, 5, 0, 5)
+        window.scroll_layout.setContentsMargins(0, 4, 0, 4)
         window.scroll_layout.setSpacing(10)
 
-        # 1. 豆包 AI 结果区域
-        window.ai_title_lbl = QLabel("✨ 豆包 AI")
-        window.ai_result_lbl = QLabel()
-        window.ai_result_lbl.setWordWrap(True)
-        window.ai_result_lbl.setTextFormat(Qt.RichText)
-        window.ai_result_lbl.setOpenExternalLinks(True)
-        window.ai_result_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
-        
-        # 2. 谷歌翻译结果区域
-        window.google_title_lbl = QLabel("🌐 谷歌翻译")
-        window.google_result_lbl = QLabel()
-        window.google_result_lbl.setWordWrap(True)
-        window.google_result_lbl.setTextFormat(Qt.RichText)
-        window.google_result_lbl.setOpenExternalLinks(True)
-        window.google_result_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
-        
-        window.scroll_layout.addWidget(window.ai_title_lbl)
-        window.scroll_layout.addWidget(window.ai_result_lbl)
-        window.scroll_layout.addWidget(window.google_title_lbl)
-        window.scroll_layout.addWidget(window.google_result_lbl)
-        window.scroll_layout.addStretch()
-        
+        def create_result_card(object_name, title, copy_callback):
+            card = QFrame()
+            card.setObjectName(object_name)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(13, 11, 13, 13)
+            card_layout.setSpacing(8)
+
+            header = QHBoxLayout()
+            header.setContentsMargins(0, 0, 0, 0)
+            header.setSpacing(7)
+
+            dot = QLabel("●")
+            dot.setObjectName(f"{object_name}Dot")
+            dot.setFixedWidth(10)
+
+            title_label = QLabel(title)
+            title_label.setObjectName(f"{object_name}Title")
+
+            copy_button = QPushButton("复制")
+            copy_button.setObjectName("copyButton")
+            copy_button.setFixedSize(48, 26)
+            copy_button.setToolTip(f"复制{title}结果")
+            copy_button.setCursor(Qt.PointingHandCursor)
+            copy_button.setEnabled(False)
+            copy_button.clicked.connect(copy_callback)
+
+            header.addWidget(dot)
+            header.addWidget(title_label)
+            header.addStretch()
+            header.addWidget(copy_button)
+
+            result_label = QLabel()
+            result_label.setObjectName("resultText")
+            result_label.setWordWrap(True)
+            result_label.setTextFormat(Qt.RichText)
+            result_label.setOpenExternalLinks(True)
+            result_label.setTextInteractionFlags(
+                Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse
+            )
+
+            card_layout.addLayout(header)
+            card_layout.addWidget(result_label)
+            return card, title_label, result_label, copy_button, header
+
+        (
+            window.ai_card,
+            window.ai_title_lbl,
+            window.ai_result_lbl,
+            window.ai_copy_btn,
+            ai_header,
+        ) = create_result_card("aiCard", "AI 翻译", lambda: window.copy_result("ai"))
+
+        window.ai_retry_btn = QPushButton("重试")
+        window.ai_retry_btn.setObjectName("retryButton")
+        window.ai_retry_btn.setFixedSize(48, 26)
+        window.ai_retry_btn.setToolTip("重新请求 AI 翻译")
+        window.ai_retry_btn.setCursor(Qt.PointingHandCursor)
+        window.ai_retry_btn.clicked.connect(window.retry_ai_translation)
+        window.ai_retry_btn.hide()
+        ai_header.insertWidget(ai_header.count() - 1, window.ai_retry_btn)
+
+        (
+            window.google_card,
+            window.google_title_lbl,
+            window.google_result_lbl,
+            window.google_copy_btn,
+            _google_header,
+        ) = create_result_card(
+            "googleCard", "Google 翻译", lambda: window.copy_result("google")
+        )
+
+        window.scroll_layout.addWidget(window.ai_card)
+        window.scroll_layout.addWidget(window.google_card)
         window.main_scroll.setWidget(window.scroll_content)
 
-        # === 底部朗读按钮 (Status Bar) ===
-        window.play_btn = QPushButton("🔊 朗读原文")
-        window.play_btn.setFixedHeight(36)
+        window.play_btn = QPushButton("朗读原文")
+        window.play_btn.setObjectName("playButton")
+        window.play_btn.setFixedHeight(34)
         window.play_btn.setCursor(Qt.PointingHandCursor)
         window.play_btn.clicked.connect(window.play_audio)
 
         window.content_layout.addLayout(window.header_layout)
         window.content_layout.addWidget(window.input_edit)
         window.content_layout.addLayout(window.toolbar_layout)
+        window.content_layout.addWidget(window.ocr_panel)
         window.content_layout.addWidget(window.main_scroll)
         window.content_layout.addWidget(window.play_btn)
-        
+
         window.container.setLayout(window.content_layout)
         window.main_layout.addWidget(window.container)
         window.setLayout(window.main_layout)
 
         window.hide_results()
-        window.setFixedWidth(340)
+        window.setFixedWidth(380)
         window.adjustSize()
-        
-        # === 弹窗淡入动画 ===
+
         window.fade_anim = QPropertyAnimation(window, b"windowOpacity")
-        window.fade_anim.setDuration(150)
+        window.fade_anim.setDuration(140)
         window.fade_anim.setStartValue(0.0)
         window.fade_anim.setEndValue(1.0)
-        window.fade_anim.setEasingCurve(QEasingCurve.OutQuad)
+        window.fade_anim.setEasingCurve(QEasingCurve.OutCubic)
+
 
 def apply_window_theme(window, theme_name):
     if theme_name == "light":
-        bg_color = "rgba(250, 250, 250, 248)"
-        border_color = "rgba(200, 200, 200, 150)"
-        title_color = "#555555"
-        close_btn_color = "#888888"
-        input_bg = "rgba(255, 255, 255, 255)"
-        input_text = "#333333"
-        input_border = "rgba(200, 200, 200, 180)"
-        result_text = "#2c3e50"
-        play_btn_bg = "#1a73e8"
-        play_btn_hover = "#2b84f3"
-        
-        window.html_vars = {
-            "card_bg": "rgba(0,0,0,0.03)",
-            "bubble_bg": "rgba(255,255,255,0.9)",
-            "phonetic_bg": "rgba(0,0,0,0.06)",
-            "phonetic_text": "#666666",
-            "divider": "rgba(0,0,0,0.08)",
-            "ai_title": "#0067C0",
-            "google_title": "#d97b00",
-            "placeholder": "#888888"
-        }
+        window_bg = "rgba(247, 248, 250, 250)"
+        surface = "#FFFFFF"
+        surface_subtle = "#F4F6F8"
+        border = "#DCE1E8"
+        text = "#182033"
+        muted = "#6B7280"
+        primary = "#2563EB"
+        primary_hover = "#1D4ED8"
+        primary_pressed = "#1E40AF"
+        ai_accent = "#0F766E"
+        ai_surface = "#F0FDFA"
+        google_accent = "#B45309"
+        google_surface = "#FFFBEB"
+        danger = "#DC2626"
+        shadow_button = "#EEF2F7"
     else:
-        bg_color = "rgba(28, 28, 30, 248)"
-        border_color = "rgba(60, 60, 60, 180)"
-        title_color = "#aaaaaa"
-        close_btn_color = "#888888"
-        input_bg = "rgba(40, 40, 42, 255)"
-        input_text = "#f0f0f0"
-        input_border = "rgba(70, 70, 75, 180)"
-        result_text = "#e0e0e0"
-        play_btn_bg = "#0A84FF"
-        play_btn_hover = "#409CFF"
-        
-        window.html_vars = {
-            "card_bg": "rgba(0,0,0,0.2)",
-            "bubble_bg": "rgba(50,50,55,0.6)",
-            "phonetic_bg": "rgba(255,255,255,0.1)",
-            "phonetic_text": "#aaaaaa",
-            "divider": "rgba(255,255,255,0.1)",
-            "ai_title": "#5bc0de",
-            "google_title": "#f0ad4e",
-            "placeholder": "#888888"
-        }
+        window_bg = "rgba(24, 26, 31, 250)"
+        surface = "#202329"
+        surface_subtle = "#292D35"
+        border = "#383E49"
+        text = "#F3F4F6"
+        muted = "#9CA3AF"
+        primary = "#3B82F6"
+        primary_hover = "#60A5FA"
+        primary_pressed = "#2563EB"
+        ai_accent = "#5EEAD4"
+        ai_surface = "#1C302F"
+        google_accent = "#FBBF24"
+        google_surface = "#332A18"
+        danger = "#F87171"
+        shadow_button = "#303540"
 
-    window.container.setStyleSheet(f"""
+    window.html_vars = {
+        "card_bg": surface_subtle,
+        "bubble_bg": surface,
+        "phonetic_bg": shadow_button,
+        "phonetic_text": muted,
+        "divider": border,
+        "ai_title": ai_accent,
+        "google_title": google_accent,
+        "placeholder": muted,
+        "primary": primary,
+        "danger": danger,
+    }
+
+    window.container.setStyleSheet(
+        f"""
         QFrame#container {{
-            background-color: {bg_color};
-            border: 1px solid {border_color};
-            border-radius: 14px;
+            background-color: {window_bg};
+            border: 1px solid {border};
+            border-radius: 8px;
         }}
-    """)
-    
-    window.title_label.setStyleSheet(f"color: {title_color}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 12px; font-weight: bold;")
-    
-    window.close_btn.setStyleSheet(f"""
-        QPushButton {{
-            background-color: transparent;
-            color: {close_btn_color};
-            border: none;
-            font-size: 18px;
-            font-weight: bold;
-            padding-bottom: 2px;
-        }}
-        QPushButton:hover {{
-            color: #ff4d4d;
-        }}
-    """)
-    
-    window.input_edit.setStyleSheet(f"""
-        QTextEdit {{ 
-            background-color: {input_bg}; 
-            color: {input_text}; 
-            border: 1px solid {input_border}; 
-            border-radius: 10px; 
-            font-family: 'Segoe UI', 'Microsoft YaHei'; 
-            font-size: 15px; 
-            padding: 12px; 
-        }}
-        QTextEdit:focus {{
-            border: 1px solid {play_btn_bg};
-        }}
-    """)
-    
-    window.settings_btn.setStyleSheet(f"""
-        QPushButton {{ background: transparent; border: none; border-radius: 14px; font-size: 16px; }}
-        QPushButton:hover {{ background: {window.html_vars.get('card_bg')}; }}
-    """)
-    
-    window.translate_btn.setStyleSheet(f"""
-        QPushButton {{
-            background-color: {play_btn_bg};
-            color: white;
-            border: none;
-            border-radius: 15px;
-            padding: 0 16px;
-            font-family: 'Segoe UI', 'Microsoft YaHei';
-            font-size: 13px;
-            font-weight: bold;
-        }}
-        QPushButton:hover {{
-            background-color: {play_btn_hover};
-        }}
-    """)
+        """
+    )
 
-    window.ai_title_lbl.setStyleSheet(f"QLabel {{ color: {window.html_vars.get('ai_title')}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 13px; font-weight: bold; margin-left: 4px; }}")
-    window.google_title_lbl.setStyleSheet(f"QLabel {{ color: {window.html_vars.get('google_title')}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 13px; font-weight: bold; margin-left: 4px; }}")
-    
-    bubble_bg = window.html_vars.get('bubble_bg')
-    window.ai_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: {bubble_bg}; border-radius: 10px; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; padding: 14px; margin-bottom: 8px; line-height: 1.6; border: 1px solid {border_color}; }}")
-    window.google_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: {bubble_bg}; border-radius: 10px; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; padding: 14px; line-height: 1.6; border: 1px solid {border_color}; }}")
-    
-    scroll_style = f"""
-        QScrollArea {{
-            background-color: transparent;
-            border: none;
-        }}
-        QFrame#scroll_content {{
-            background-color: transparent;
-        }}
-        QScrollBar:vertical {{
-            border: none;
-            background: transparent;
-            width: 6px;
-            margin: 0px;
-        }}
-        QScrollBar::handle:vertical {{
-            background: rgba(120, 120, 120, 100);
-            min-height: 20px;
-            border-radius: 3px;
-        }}
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-            border: none;
-            background: none;
-        }}
-        QScrollBar::handle:vertical:hover {{
-            background: rgba(120, 120, 120, 180);
-        }}
-    """
-    window.main_scroll.setStyleSheet(scroll_style)
-    
-    window.play_btn.setStyleSheet(f"""
+    window.brand_mark.setStyleSheet(
+        f"background-color: {primary}; border: none; border-radius: 2px;"
+    )
+    window.title_label.setStyleSheet(
+        f"color: {text}; font-family: 'Segoe UI', 'Microsoft YaHei'; "
+        "font-size: 14px; font-weight: 700;"
+    )
+    window.status_label.setStyleSheet(
+        f"color: {muted}; background: {surface_subtle}; border: 1px solid {border}; "
+        "border-radius: 6px; padding: 3px 7px; font-size: 11px;"
+    )
+
+    window.settings_btn.setStyleSheet(
+        f"""
         QPushButton {{
-            background-color: {window.html_vars.get('card_bg')};
-            color: {result_text};
-            border: 1px solid {border_color};
-            border-radius: 10px;
-            font-family: 'Segoe UI', 'Microsoft YaHei';
-            font-size: 13px;
-            font-weight: 500;
+            background: transparent; color: {muted}; border: none;
+            border-radius: 6px; font-size: 15px;
         }}
-        QPushButton:hover {{
-            background-color: {bubble_bg};
+        QPushButton:hover {{ background: {surface_subtle}; color: {text}; }}
+        """
+    )
+    window.close_btn.setStyleSheet(
+        f"""
+        QPushButton {{
+            background: transparent; color: {muted}; border: none;
+            border-radius: 6px; font-size: 19px; padding-bottom: 2px;
         }}
-    """)
+        QPushButton:hover {{ background: {surface_subtle}; color: {danger}; }}
+        """
+    )
+
+    window.input_edit.setStyleSheet(
+        f"""
+        QTextEdit#translationInput {{
+            background-color: {surface}; color: {text}; border: 1px solid {border};
+            border-radius: 8px; font-family: 'Segoe UI', 'Microsoft YaHei';
+            font-size: 15px; padding: 11px; selection-background-color: {primary};
+        }}
+        QTextEdit#translationInput:focus {{ border: 2px solid {primary}; padding: 10px; }}
+        """
+    )
+    window.mode_label.setStyleSheet(
+        f"color: {muted}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 11px;"
+    )
+    window.translate_btn.setStyleSheet(
+        f"""
+        QPushButton#translateButton {{
+            background-color: {primary}; color: white; border: none;
+            border-radius: 7px; font-family: 'Segoe UI', 'Microsoft YaHei';
+            font-size: 13px; font-weight: 700;
+        }}
+        QPushButton#translateButton:hover {{ background-color: {primary_hover}; }}
+        QPushButton#translateButton:pressed {{ background-color: {primary_pressed}; }}
+        """
+    )
+
+    window.ocr_panel.setStyleSheet(
+        f"QFrame#ocrPanel {{ background: {surface}; border: 1px solid {border}; border-radius: 8px; }}"
+    )
+    window.ocr_status_dot.setStyleSheet(f"color: {primary}; font-size: 9px;")
+    window.ocr_status_title.setStyleSheet(
+        f"color: {text}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; font-weight: 700;"
+    )
+    window.ocr_status_desc.setStyleSheet(
+        f"color: {muted}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 12px;"
+    )
+    window.ocr_progress.setStyleSheet(
+        f"""
+        QProgressBar#ocrProgress {{ background: {surface_subtle}; border: none; border-radius: 2px; }}
+        QProgressBar#ocrProgress::chunk {{ background: {primary}; border-radius: 2px; width: 36px; }}
+        """
+    )
+    window.ocr_retry_btn.setStyleSheet(
+        f"""
+        QPushButton#ocrRetryButton {{
+            background: {primary}; color: white; border: none; border-radius: 6px;
+            font-size: 11px; font-weight: 700;
+        }}
+        QPushButton#ocrRetryButton:hover {{ background: {primary_hover}; }}
+        """
+    )
+
+    window.ai_card.setStyleSheet(
+        f"QFrame#aiCard {{ background: {ai_surface}; border: 1px solid {border}; border-radius: 8px; }}"
+    )
+    window.google_card.setStyleSheet(
+        f"QFrame#googleCard {{ background: {google_surface}; border: 1px solid {border}; border-radius: 8px; }}"
+    )
+    window.ai_card.findChild(QLabel, "aiCardDot").setStyleSheet(
+        f"color: {ai_accent}; font-size: 9px;"
+    )
+    window.google_card.findChild(QLabel, "googleCardDot").setStyleSheet(
+        f"color: {google_accent}; font-size: 9px;"
+    )
+    window.ai_title_lbl.setStyleSheet(
+        f"color: {ai_accent}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 12px; font-weight: 700;"
+    )
+    window.google_title_lbl.setStyleSheet(
+        f"color: {google_accent}; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 12px; font-weight: 700;"
+    )
+    result_style = (
+        f"QLabel#resultText {{ color: {text}; background: transparent; border: none; "
+        "font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; padding: 1px; }}"
+    )
+    window.ai_result_lbl.setStyleSheet(result_style)
+    window.google_result_lbl.setStyleSheet(result_style)
+
+    copy_style = f"""
+        QPushButton#copyButton {{
+            background: transparent; color: {muted}; border: 1px solid {border};
+            border-radius: 5px; font-size: 11px; font-weight: 600;
+        }}
+        QPushButton#copyButton:hover {{ background: {surface}; color: {text}; }}
+        QPushButton#copyButton:disabled {{ color: {border}; background: transparent; }}
+    """
+    window.ai_copy_btn.setStyleSheet(copy_style)
+    window.google_copy_btn.setStyleSheet(copy_style)
+    window.ai_retry_btn.setStyleSheet(
+        f"""
+        QPushButton#retryButton {{
+            background: {primary}; color: white; border: none;
+            border-radius: 5px; font-size: 11px; font-weight: 700;
+        }}
+        QPushButton#retryButton:hover {{ background: {primary_hover}; }}
+        QPushButton#retryButton:pressed {{ background: {primary_pressed}; }}
+        """
+    )
+
+    window.main_scroll.setStyleSheet(
+        f"""
+        QScrollArea {{ background: transparent; border: none; }}
+        QFrame#scrollContent {{ background: transparent; border: none; }}
+        QScrollBar:vertical {{ border: none; background: transparent; width: 6px; }}
+        QScrollBar::handle:vertical {{ background: {border}; min-height: 24px; border-radius: 3px; }}
+        QScrollBar::handle:vertical:hover {{ background: {muted}; }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ border: none; background: none; }}
+        """
+    )
+
+    window.play_btn.setStyleSheet(
+        f"""
+        QPushButton#playButton {{
+            background: {surface_subtle}; color: {text}; border: 1px solid {border};
+            border-radius: 7px; font-family: 'Segoe UI', 'Microsoft YaHei';
+            font-size: 12px; font-weight: 600;
+        }}
+        QPushButton#playButton:hover {{ background: {surface}; border-color: {muted}; }}
+        """
+    )
