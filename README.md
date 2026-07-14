@@ -1,139 +1,113 @@
-# ✨ ManboShot 桌面聚合翻译助手
+# ManboShot
 
-**ManboShot** 是一款专为高效办公与开发者打造的现代化桌面翻译与语音助手。它巧妙融合了 **AI 大模型**（完全兼容 OpenAI 接口）的强境语境理解能力与 **Google 翻译** 的极速响应，配备 **本地+云端混合智能语音引擎**，旨在提供极致、无痛的划词与截图翻译体验。
+> Windows 桌面截图、划词与 AI/Google 双引擎翻译工具。
 
----
+[![Latest release](https://img.shields.io/github/v/release/Bob1837639921/MaoboShot?display_name=tag&style=flat-square)](https://github.com/Bob1837639921/MaoboShot/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows-2563EB?style=flat-square)](https://github.com/Bob1837639921/MaoboShot/releases/latest)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square)](https://www.python.org/)
+[![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?style=flat-square)](https://doc.qt.io/qtforpython-6/)
 
-## 🌟 核心特性 (Features)
+ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪贴板、手动输入或屏幕截图中获取文字，并行提供 AI 语境翻译与 Google 快速翻译；同时支持 OCR、原文朗读、明暗主题和自定义快捷键。
 
-### 🏎️ 1. 双核异步翻译引擎 (Race Mode)
-不再傻等 AI！软件采用“赛马机制”：
-- **🌐 谷歌翻译**：毫秒级响应，瞬间给出基础翻译结果。
-- **✨ AI 大模型**：流式生成（Streaming），提供更懂代码、更符合语境的润色结果，完美应对长难句与专业术语。支持自定义 API Base URL 和模型名称，兼容 DeepSeek、GPT-4o、豆包等任意遵循 OpenAI 规范的接口。
-- **🛡️ 独家超大文本节流渲染技术**：就算扔进去上千行代码翻译，UI 也绝不卡死！底层加入了高频流式输出节流阀，让你尽享丝滑的“打字机”特效。
+## 下载
 
-### 🗣️ 2. 混合动力语音引擎 (Hybrid TTS)
-根据文本长度智能路由，兼顾速度与发音质感：
-- **⚡ 短句 (<30字)**：调用本地 **Piper TTS** 模型，0 延迟秒开，适合高频查单词。
-- **☁️ 长文 (>30字)**：无缝切换 **云端神经TTS引擎**，支持微软 Edge TTS (晓晓) 以及 **小米 MiMo TTS**，提供顶级听感，适合朗读长段落文章。
-- **🎤 纯净语音防幻觉技术**：深度定制的系统级提示词与句尾自动闭环补全算法，彻底杜绝 AI 大语言模型当作 TTS 用时常常发生的“吞字”、“自己乱加废话”、“随机变声”等恶性问题！
+前往 [Releases](https://github.com/Bob1837639921/MaoboShot/releases/latest) 下载最新的 Windows 压缩包。
 
-### 📸 3. 沉浸式截图 OCR (Screenshot & Translate)
-- 深度集成 **RapidOCR** 本地推理引擎，断网也能精准提取屏幕文字。
-- 按下 `Alt + E` 即可进入媲美 Snipaste 的高级暗黑遮罩框选模式，松手即刻 OCR 并双引擎翻译。
+1. 下载 `ManboShot-windows-x64-*.zip`。
+2. 完整解压压缩包，不要只复制其中的 `ManboShot.exe`。
+3. 双击 `ManboShot.exe`，程序会在系统托盘中运行。
+4. 首次启动可能出现 Windows 权限确认，这是全局快捷键和剪贴板监听所需。
 
-### 🎨 4. 现代化 UI 与无感交互
-- **启动器级极简视窗**：采用仿 macOS Spotlight / Raycast 设计，无边框悬浮体验，内嵌极其精致的隐藏式工具栏与会呼吸的动态底部状态栏。
-- **Fluent Design 设置中心**：完全告别老旧 Windows 弹窗！引入侧边栏导航、毛玻璃卡片式布局。
-- **日夜间主题切换**：支持高级灰黑 (Dark) 与清爽浅色 (Light) 界面一键热切换，即时生效。
-- **智能唤醒**：选中文字后，**双击 `Ctrl + C`** 自动在光标处弹出精美卡片。
-- **系统级防抖**：深度调用 Windows底层 API，完美规避连续复制与浏览器暗中操作带来的“弹窗抽搐”问题。
+## 功能
 
----
+| 功能 | 说明 |
+| --- | --- |
+| AI + Google 双引擎 | Google 优先返回快速结果，AI 通过流式输出提供更自然的语境翻译。两路请求互不阻塞。 |
+| OpenAI 兼容接口 | 可自定义 API Key、Base URL 和模型名称，适配常见 OpenAI 兼容服务。未配置 AI 时自动使用纯 Google 模式。 |
+| 截图 OCR | 框选屏幕区域后使用 RapidOCR 在本地提取文字，并自动进入翻译流程。支持多显示器与不同缩放比例。 |
+| 划词翻译 | 复制选中的文本后自动在光标附近显示翻译窗口。 |
+| 可靠的请求反馈 | AI 流式输出、慢响应自动重试、空响应检测和可读的错误提示，Google 结果不会被 AI 超时阻塞。 |
+| 语音朗读 | 默认使用 Edge TTS 和 Pygame；也可配置小米 MiMo TTS，或安装可选的 Piper/MPV 本地组件。 |
+| 桌面体验 | 系统托盘、明暗主题、可配置全局快捷键、结果复制和紧凑的 OCR 等待状态。 |
 
-## 🚀 快速上手 (Getting Started)
+## 使用
 
-### 1. 环境准备
-确保已安装 Python 3.10+。
+### 常用操作
 
-```bash
-# 克隆项目
-git clone https://github.com/你的用户名/ManboShot.git
-cd ManboShot
+| 操作 | 默认方式 |
+| --- | --- |
+| 显示或隐藏窗口 | `Alt + Q` |
+| 截图翻译 | `Alt + E` |
+| 划词翻译 | 选中文字后快速复制两次 |
+| 手动翻译 | 输入文字后按 `Enter`，`Shift + Enter` 用于换行 |
+| 打开设置或退出 | 右键系统托盘图标 |
 
-# 安装依赖
+快捷键可以在“通用设置”中修改。若本机已有软件占用默认组合键，请更换后重试。
+
+### 配置 AI 翻译
+
+打开“设置 → AI 翻译”，填写：
+
+- `API Key`
+- `Base URL`
+- `Model`
+
+这些配置保存在本机 `%APPDATA%\MaoboShot\config.json`，不会写入项目目录。留空 API Key 时，AI 翻译卡片会自动隐藏，Google 翻译仍可正常使用。
+
+## 从源码运行
+
+需要 Windows 和 Python 3.10 或更高版本。
+
+```powershell
+git clone https://github.com/Bob1837639921/MaoboShot.git
+cd MaoboShot
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python main.py
 ```
 
-### 2. 外部依赖配置 (可选进阶扩展 🚀)
-本项目默认内置 **Pygame 播放引擎**与**微软 Edge 云端 TTS**，**开箱即用，直接运行 `main.py` 即可获得极佳体验，没有任何强制依赖！**
+## 可选语音组件
 
-如果你追求 **更强的动态防爆音音质**（通过 ffmpeg 压限器）或者 **完全断网离线的本地极速发音**，你可以在项目根目录下创建一个名为 `mpv` 的文件夹，并放入以下**可选**二进制增强工具：
+默认的 Edge TTS + Pygame 无需额外下载。若需要本地 Piper TTS 或 MPV 播放，可在项目根目录创建 `mpv` 文件夹：
 
 ```text
-ManboShot/
-├── main.py
-└── mpv/  <-- (可选扩展目录)
-    ├── mpv.exe                   (核心播放器，接管高级音频流)
-    ├── piper.exe                 (本地极速 TTS 推理引擎)
-    ├── zh_CN-huayan-medium.onnx  (中文离线发音模型)
-    └── en_US-lessac-medium.onnx  (英文离线发音模型)
+mpv/
+├── mpv.exe
+├── piper.exe
+├── zh_CN-huayan-medium.onnx
+└── en_US-lessac-medium.onnx
 ```
 
-> 💡 **获取方式**：可前往 [Piper GitHub](https://github.com/rhasspy/piper) 和 [MPV 官网](https://mpv.io/) 下载上述免安装工具。在设置面板中切换“音频播放底层驱动”即可启用。
+程序也支持通过环境变量 `MAOBOSHOT_TOOL_DIR` 指定该目录。可选组件不会包含在默认 Release 中。
 
-### 3. 软件配置说明
-1. 直接运行程序 `python main.py`（或者双击打包后的 `ManboShot.exe`）。
-2. 软件会在右下角系统托盘静默运行，右键点击 ✨ 星星图标，选择 **「⚙️ 设置」** 即可打开设置面板。
+## 构建 Windows 版本
 
-设置面板包含三大模块：
-
-- **🤖 AI 翻译模型**：
-  在这里配置大模型接口。支持任意兼容 OpenAI 规范的接口（如 DeepSeek、豆包、GPT-4o、通义千问等）。
-  你需要填写：`API Key`、`Base URL` 和 `模型名称 (Model)`。
-  > *💡 如果留空不填 API Key，软件将自动降级为“纯 Google 翻译”模式，界面依然完美适配。*
-
-- **🔊 语音与 TTS**：
-  - **引擎工作模式**：可切换纯云端语音或混合语音（需下载可选的本地 piper 模型）。
-  - **云端 AI 提供商**：默认使用免费稳定的 **Edge TTS**。如果你有极高音质与定制化需求，可切换并配置 **小米 MiMo TTS**（同样基于 OpenAI 协议格式配置 Key 和 Base URL）。
-
-- **⚙️ 通用与外观**：
-  - **音频播放底层驱动**：默认使用内置 `pygame`。如需更强音质，可切换为 `mpv`（需参考第2步下载可选扩展）。
-  - **外观风格**：支持 🌙 暗色主题与 ☀️ 浅色主题热切换。
-
-> ⚠️ 所有真实配置会自动保存在系统用户目录下（`%APPDATA%\MaoboShot\config.json`）。请勿直接修改项目代码或提交敏感 Key！
-
----
-
-## ⌨️ 快捷键说明 (Hotkeys)
-
-| 快捷键 | 功能 | 说明 |
-| :--- | :--- | :--- |
-| **连按两次 Ctrl + C** | 划词翻译 | 选中任意文本，0.15~0.6 秒内连按两次复制键，弹窗将跟随鼠标光标唤醒。 |
-| **Alt + Q** | 显示/隐藏 | 随时呼出或隐藏主窗口面板。 |
-| **Alt + E** | 截图翻译 | 类似 QQ/微信 截图，框选屏幕任意区域后自动提取文字并翻译。 |
-| **右键托盘图标** | 退出程序 | 彻底释放热键与后台进程。 |
-
----
-
-## 📦 一键打包指南 (Build EXE)
-
-如果你想将其打包为没有任何黑框的绿色独立软件分享给朋友，无需手动配置复杂的 PyInstaller 参数：
-
-只需在项目根目录运行：
-```bash
+```powershell
 python build_exe.py
 ```
 
-脚本将自动清理缓存、融合所有依赖项与隐式库（解决 Pydantic/SSL 等玄学报错），并在 `dist/ManboShot` 目录下生成最终可分发的绿色文件夹。
-
-如需构建后同步复制到指定发布目录，可显式传入：
-
-```bash
-python build_exe.py --deploy-dir D:\Release\ManboShot
-```
-
-默认情况下脚本不会删除或覆盖项目外的固定目录，只会生成 `dist/ManboShot`。
-
-**发布结构**：
-脚本执行完毕后，将生成的 `ManboShot` 文件夹打个 `.zip` 压缩包即可发给任何人使用。
+输出位于 `dist/ManboShot`。发布时必须压缩并分发整个 `ManboShot` 文件夹，因为 `_internal` 中包含运行依赖。
 
 ```text
 dist/
 └── ManboShot/
-    └── ManboShot.exe  <-- 用户双击运行这个即可
+    ├── ManboShot.exe
+    └── _internal/
 ```
 
-> 💡 **提示**：如果你在项目根目录下放置了可选的 `mpv` 扩展文件夹，打包脚本也会自动将其一并打包到 `dist/ManboShot/mpv` 目录中，方便你制作包含离线语音增强功能的完整分发包！
+## 隐私与安全
 
----
+- OCR 在本机执行；翻译和云端语音内容会发送给对应的服务提供商。
+- API Key 仅保存在当前 Windows 用户的配置目录中。
+- 请勿提交 `.env`、`config.json`、日志文件或任何真实密钥。
+- Release 不包含开发者的本地配置和 API Key。
 
-## ⚠️ 注意事项
+## 文档
 
-1. **管理员权限**：为彻底解决全局热键被占用（如被 Snipaste、微信抢占 `Alt+E`）以及底层剪贴板监听失败的问题，程序启动时会**自动申请提权**。
-2. **纯净后台**：应用完全关闭时，会自动猎杀后台所有衍生的 `mpv.exe` 和 `piper.exe` 僵尸进程，绝不泄露系统内存。
+- [版本记录](CHANGELOG.md)
+- [维护与发布说明](docs/maintenance.md)
 
----
+## License
 
-## 📄 License
 MIT License © 2026 Manbo
