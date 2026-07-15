@@ -16,6 +16,7 @@ def build(deploy_dir=None):
         shutil.rmtree(build_dir)
         
     icon_path = project_root / "icon.ico"
+    assets_path = project_root / "assets"
     mpv_path = project_root / "mpv"
 
     # 定义打包参数
@@ -32,6 +33,9 @@ def build(deploy_dir=None):
         # 将静态资源打包进去 (源目录;目标目录)
         f'--add-data={icon_path};.',
     ]
+
+    if assets_path.exists():
+        args.append(f'--add-data={assets_path};assets')
 
     # 可选：如果项目里存在 mpv 文件夹，才进行打包
     if mpv_path.exists():

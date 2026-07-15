@@ -10,8 +10,93 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QTimer, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
+
+from ui.theme import normalize_theme, theme_palette, theme_texture_path
+
+
+class TexturedContainer(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._texture = QPixmap()
+        self._scaled_texture = QPixmap()
+        self._texture_opacity = 0.0
+        self._theme_name = "dark"
+        self._accent = QColor("#3B82F6")
+        self._scan_phase = 0
+        self._scan_timer = QTimer(self)
+        self._scan_timer.setInterval(80)
+        self._scan_timer.timeout.connect(self._advance_scan)
+
+    def set_theme_visual(self, theme_name, texture_path, opacity, accent):
+        self._theme_name = normalize_theme(theme_name)
+        self._texture_opacity = float(opacity)
+        self._accent = QColor(accent)
+        self._texture = QPixmap(str(texture_path)) if texture_path else QPixmap()
+        self._refresh_scaled_texture()
+
+        if self._texture.isNull():
+            self._scan_timer.stop()
+            self._scan_phase = 0
+        elif self.isVisible() and not self._scan_timer.isActive():
+            self._scan_timer.start()
+        self.update()
+
+    def _refresh_scaled_texture(self):
+        if self._texture.isNull() or self.width() <= 0 or self.height() <= 0:
+            self._scaled_texture = QPixmap()
+            return
+        self._scaled_texture = self._texture.scaled(
+            self.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+
+    def _advance_scan(self):
+        self._scan_phase = (self._scan_phase + 3) % max(1, self.height() + 80)
+        self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._refresh_scaled_texture()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._texture.isNull() and not self._scan_timer.isActive():
+            self._scan_timer.start()
+
+    def hideEvent(self, event):
+        self._scan_timer.stop()
+        super().hideEvent(event)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._scaled_texture.isNull():
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        clip_path = QPainterPath()
+        clip_path.addRoundedRect(QRectF(self.rect().adjusted(1, 1, -1, -1)), 7, 7)
+        painter.setClipPath(clip_path)
+
+        x = (self.width() - self._scaled_texture.width()) // 2
+        y = (self.height() - self._scaled_texture.height()) // 2
+        painter.setOpacity(self._texture_opacity)
+        painter.drawPixmap(x, y, self._scaled_texture)
+
+        painter.setOpacity(1.0)
+        scan_y = self._scan_phase - 40
+        scan_color = QColor(self._accent)
+        scan_color.setAlpha(34 if self._theme_name != "blueprint" else 24)
+        painter.setPen(QPen(scan_color, 1))
+        painter.drawLine(14, scan_y, max(14, self.width() - 14), scan_y)
+
+        glow_color = QColor(self._accent)
+        glow_color.setAlpha(12)
+        painter.setPen(QPen(glow_color, 7))
+        painter.drawLine(20, scan_y, max(20, self.width() - 20), scan_y)
 
 
 class Ui_FloatingWindow:
@@ -19,7 +104,7 @@ class Ui_FloatingWindow:
         window.main_layout = QVBoxLayout()
         window.main_layout.setContentsMargins(12, 12, 12, 12)
 
-        window.container = QFrame()
+        window.container = TexturedContainer()
         window.container.setObjectName("container")
 
         shadow = QGraphicsDropShadowEffect(window)
@@ -249,38 +334,30 @@ class Ui_FloatingWindow:
 
 
 def apply_window_theme(window, theme_name):
-    if theme_name == "light":
-        window_bg = "rgba(247, 248, 250, 250)"
-        surface = "#FFFFFF"
-        surface_subtle = "#F4F6F8"
-        border = "#DCE1E8"
-        text = "#182033"
-        muted = "#6B7280"
-        primary = "#2563EB"
-        primary_hover = "#1D4ED8"
-        primary_pressed = "#1E40AF"
-        ai_accent = "#0F766E"
-        ai_surface = "#F0FDFA"
-        google_accent = "#B45309"
-        google_surface = "#FFFBEB"
-        danger = "#DC2626"
-        shadow_button = "#EEF2F7"
-    else:
-        window_bg = "rgba(24, 26, 31, 250)"
-        surface = "#202329"
-        surface_subtle = "#292D35"
-        border = "#383E49"
-        text = "#F3F4F6"
-        muted = "#9CA3AF"
-        primary = "#3B82F6"
-        primary_hover = "#60A5FA"
-        primary_pressed = "#2563EB"
-        ai_accent = "#5EEAD4"
-        ai_surface = "#1C302F"
-        google_accent = "#FBBF24"
-        google_surface = "#332A18"
-        danger = "#F87171"
-        shadow_button = "#303540"
+    theme_name = normalize_theme(theme_name)
+    palette = theme_palette(theme_name)
+    window_bg = palette["window_bg"]
+    surface = palette["surface"]
+    surface_subtle = palette["surface_subtle"]
+    border = palette["border"]
+    text = palette["text"]
+    muted = palette["muted"]
+    primary = palette["primary"]
+    primary_hover = palette["primary_hover"]
+    primary_pressed = palette["primary_pressed"]
+    ai_accent = palette["ai_accent"]
+    ai_surface = palette["ai_surface"]
+    google_accent = palette["google_accent"]
+    google_surface = palette["google_surface"]
+    danger = palette["danger"]
+    shadow_button = palette["shadow_button"]
+
+    window.container.set_theme_visual(
+        theme_name,
+        theme_texture_path(theme_name),
+        palette["texture_opacity"],
+        primary,
+    )
 
     window.html_vars = {
         "card_bg": surface_subtle,

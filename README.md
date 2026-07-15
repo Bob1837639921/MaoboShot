@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?style=flat-square)](https://doc.qt.io/qtforpython-6/)
 
-ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪贴板、手动输入或屏幕截图中获取文字，并行提供 AI 语境翻译与 Google 快速翻译；同时支持 OCR、原文朗读、明暗主题和自定义快捷键。
+ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪贴板、手动输入或屏幕截图中获取文字，并行提供 AI 语境翻译与 Google 快速翻译；同时支持 OCR、原文朗读、五套可切换主题和自定义快捷键。
 
 ## 下载
 
@@ -28,7 +28,7 @@ ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪�
 | 划词翻译 | 复制选中的文本后自动在光标附近显示翻译窗口。 |
 | 可靠的请求反馈 | AI 流式输出、慢响应自动重试、空响应检测和可读的错误提示，Google 结果不会被 AI 超时阻塞。 |
 | 语音朗读 | 默认使用 Edge TTS 和 Pygame；也可配置小米 MiMo TTS，或安装可选的 Piper/MPV 本地组件。 |
-| 桌面体验 | 系统托盘、明暗主题、可配置全局快捷键、结果复制和紧凑的 OCR 等待状态。 |
+| 桌面体验 | 系统托盘、五套主题、可配置全局快捷键、结果复制和紧凑的 OCR 等待状态。 |
 
 ## 使用
 

@@ -1,9 +1,89 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QLineEdit, QTextEdit, QPushButton, QMessageBox, QComboBox,
                                QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea, QKeySequenceEdit)
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon, QKeySequence
+from PySide6.QtCore import QRectF, Qt, QSize
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPainterPath, QPixmap
 from core.config import load_app_config, save_app_config, ICON_PATH
+from ui.theme import (
+    THEME_LABELS,
+    THEME_ORDER,
+    normalize_theme,
+    theme_palette,
+    theme_texture_path,
+)
+
+
+THEME_TOOLTIPS = {
+    "dark": "低亮度经典界面，适合夜间使用",
+    "light": "清爽明亮的经典界面",
+    "graphite": "深色等高线纹理与青蓝强调色",
+    "blueprint": "冰霜玻璃质感与蓝图纹理",
+    "signal": "深色电路纹理与青橙信号色",
+}
+
+
+class ClearArrowComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._arrow_color = QColor("#6B7280")
+
+    def set_arrow_color(self, color):
+        self._arrow_color = QColor(color)
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(self._arrow_color)
+        font = painter.font()
+        font.setFamily("Segoe UI Symbol")
+        font.setPixelSize(15)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(
+            self.width() - 39,
+            0,
+            38,
+            self.height(),
+            Qt.AlignCenter,
+            "▾",
+        )
+
+
+def create_theme_preview(theme_name):
+    palette = theme_palette(theme_name)
+    preview = QPixmap(52, 22)
+    preview.fill(Qt.transparent)
+
+    painter = QPainter(preview)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    clip = QPainterPath()
+    clip.addRoundedRect(QRectF(0.5, 0.5, 51, 21), 4, 4)
+    painter.setClipPath(clip)
+
+    texture_path = theme_texture_path(theme_name)
+    if texture_path:
+        texture = QPixmap(str(texture_path)).scaled(
+            preview.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+        )
+        x = (preview.width() - texture.width()) // 2
+        y = (preview.height() - texture.height()) // 2
+        painter.drawPixmap(x, y, texture)
+    else:
+        painter.fillRect(preview.rect(), QColor(palette["surface"]))
+        painter.fillRect(0, 0, 18, 17, QColor(palette["surface_subtle"]))
+
+    accent_y = preview.height() - 5
+    painter.fillRect(0, accent_y, 18, 5, QColor(palette["primary"]))
+    painter.fillRect(18, accent_y, 17, 5, QColor(palette["ai_accent"]))
+    painter.fillRect(35, accent_y, 17, 5, QColor(palette["google_accent"]))
+    painter.setClipping(False)
+    painter.setPen(QColor(palette["border"]))
+    painter.drawRoundedRect(QRectF(0.5, 0.5, 51, 21), 4, 4)
+    painter.end()
+    return preview
+
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
@@ -199,7 +279,7 @@ class SettingsWindow(QDialog):
         engine_layout = QVBoxLayout()
         engine_layout.setSpacing(10)
         
-        self.tts_combo = QComboBox()
+        self.tts_combo = ClearArrowComboBox()
         self.tts_combo.addItems(["☁️ 纯云端语音 (发音纯正/依赖网络)", "⚡ 混合语音 (短文本极速本地响应)"])
         
         tts_label = QLabel("引擎工作模式")
@@ -207,7 +287,7 @@ class SettingsWindow(QDialog):
         engine_layout.addWidget(tts_label)
         engine_layout.addWidget(self.tts_combo)
         
-        self.ai_tts_provider_combo = QComboBox()
+        self.ai_tts_provider_combo = ClearArrowComboBox()
         self.ai_tts_provider_combo.addItems(["Edge TTS (免费/稳定)", "小米 MiMo TTS (高级)"])
         
         provider_label = QLabel("云端 AI 提供商")
@@ -243,7 +323,7 @@ class SettingsWindow(QDialog):
         col1.addWidget(self.xiaomi_model_input)
         
         col2 = QVBoxLayout()
-        self.xiaomi_voice_combo = QComboBox()
+        self.xiaomi_voice_combo = ClearArrowComboBox()
         self.xiaomi_voice_combo.addItems(["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"])
         v_lbl = QLabel("音色")
         v_lbl.setProperty("class", "input-label")
@@ -307,7 +387,7 @@ class SettingsWindow(QDialog):
         g_layout = QVBoxLayout()
         g_layout.setSpacing(10)
 
-        self.player_combo = QComboBox()
+        self.player_combo = ClearArrowComboBox()
         self.player_combo.addItems(["pygame (默认/兼容性极佳)", "mpv (增强音质/需额外下载)"])
         self.player_combo.currentIndexChanged.connect(self._on_player_changed)
         p_lbl = QLabel("音频播放底层驱动")
@@ -315,8 +395,19 @@ class SettingsWindow(QDialog):
         g_layout.addWidget(p_lbl)
         g_layout.addWidget(self.player_combo)
 
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["🌙 暗色主题 (Dark Mode)", "☀️ 浅色主题 (Light Mode)"])
+        self.theme_combo = ClearArrowComboBox()
+        self.theme_combo.setIconSize(QSize(52, 22))
+        self.theme_combo.setMinimumHeight(42)
+        for theme_name in THEME_ORDER:
+            self.theme_combo.addItem(
+                QIcon(create_theme_preview(theme_name)),
+                THEME_LABELS[theme_name],
+                theme_name,
+            )
+            item_index = self.theme_combo.count() - 1
+            self.theme_combo.setItemData(
+                item_index, THEME_TOOLTIPS[theme_name], Qt.ToolTipRole
+            )
         self.theme_combo.currentIndexChanged.connect(self.apply_theme_from_combo)
         t_lbl = QLabel("应用外观风格")
         t_lbl.setProperty("class", "input-label")
@@ -377,8 +468,9 @@ class SettingsWindow(QDialog):
         player_engine = config.get("AUDIO_PLAYER", "pygame")
         self.player_combo.setCurrentIndex(1 if player_engine == "mpv" else 0)
             
-        theme = config.get("THEME", "dark")
-        self.theme_combo.setCurrentIndex(1 if theme == "light" else 0)
+        theme = normalize_theme(config.get("THEME", "dark"))
+        theme_index = self.theme_combo.findData(theme)
+        self.theme_combo.setCurrentIndex(max(0, theme_index))
         
         # 加载快捷键
         show_hk = config.get("HOTKEY_SHOW", "Alt+Q")
@@ -390,50 +482,37 @@ class SettingsWindow(QDialog):
         self.apply_theme_from_combo(self.theme_combo.currentIndex())
 
     def apply_theme_from_combo(self, index):
-        is_light = (index == 1)
-        
-        if is_light:
-            bg_main = "#F7F8FA"
-            bg_sidebar = "#171A21"
-            bg_card = "#FFFFFF"
-            text_main = "#182033"
-            text_desc = "#6B7280"
-            sidebar_text = "#C9D0DC"
-            border_col = "#DCE1E8"
-            input_bg = "#FBFCFD"
-            input_border = "#D6DCE5"
-            list_hover = "#242A35"
-            list_selected = "#2563EB"
-            list_sel_text = "#FFFFFF"
-            btn_bg = "#EEF1F5"
-            btn_hover = "#E2E7EE"
-            btn_text = "#374151"
-            primary_bg = "#2563EB"
-            primary_hover = "#1D4ED8"
-            divider_col = "#E8EBF0"
-        else:
-            bg_main = "#181A1F"
-            bg_sidebar = "#111318"
-            bg_card = "#22252B"
-            text_main = "#F3F4F6"
-            text_desc = "#9CA3AF"
-            sidebar_text = "#B7BFCC"
-            border_col = "#383E49"
-            input_bg = "#292D35"
-            input_border = "#424955"
-            list_hover = "#242932"
-            list_selected = "#3B82F6"
-            list_sel_text = "#FFFFFF"
-            btn_bg = "#2C313A"
-            btn_hover = "#373D48"
-            btn_text = "#E5E7EB"
-            primary_bg = "#3B82F6"
-            primary_hover = "#60A5FA"
-            divider_col = "#343A44"
+        theme_name = normalize_theme(self.theme_combo.itemData(index))
+        palette = theme_palette(theme_name)
+        bg_main = palette["settings_bg"]
+        bg_sidebar = palette["settings_sidebar"]
+        bg_card = palette["settings_card"]
+        text_main = palette["text"]
+        text_desc = palette["muted"]
+        sidebar_text = palette["sidebar_text"]
+        border_col = palette["border"]
+        input_bg = palette["settings_input"]
+        input_border = palette["settings_input_border"]
+        list_hover = palette["settings_hover"]
+        list_selected = palette["primary"]
+        list_sel_text = "#FFFFFF"
+        btn_bg = palette["settings_button"]
+        btn_hover = palette["settings_button_hover"]
+        btn_text = palette["settings_button_text"]
+        primary_bg = palette["primary"]
+        primary_hover = palette["primary_hover"]
+        divider_col = palette["divider"]
+        for combo in self.findChildren(ClearArrowComboBox):
+            combo.set_arrow_color(text_desc)
+        texture_path = theme_texture_path(theme_name)
+        texture_rule = ""
+        if texture_path:
+            texture_rule = f"border-image: url('{texture_path.as_posix()}') 0 0 0 0 stretch stretch;"
 
         self.setStyleSheet(f"""
             QDialog {{
                 background-color: {bg_main};
+                {texture_rule}
                 color: {text_main};
                 font-family: 'Segoe UI', 'Microsoft YaHei';
             }}
@@ -531,15 +610,34 @@ class SettingsWindow(QDialog):
                 border: 1px solid {primary_bg};
             }}
             QComboBox::drop-down {{
+                background-color: {btn_bg};
                 border: none;
-                width: 30px;
+                border-left: 1px solid {input_border};
+                border-top-right-radius: 5px;
+                border-bottom-right-radius: 5px;
+                width: 38px;
+            }}
+            QComboBox::drop-down:hover {{
+                background-color: {btn_hover};
             }}
             QComboBox::down-arrow {{
                 image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid {text_desc};
-                margin-right: 10px;
+                width: 0;
+                height: 0;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {bg_card};
+                color: {text_main};
+                border: 1px solid {input_border};
+                border-radius: 6px;
+                outline: none;
+                padding: 5px;
+                selection-background-color: {primary_bg};
+                selection-color: white;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 32px;
+                padding: 4px 9px;
             }}
             
             /* Button styling */
@@ -583,7 +681,7 @@ class SettingsWindow(QDialog):
         """)
 
     def save_settings(self):
-        theme_val = "light" if self.theme_combo.currentIndex() == 1 else "dark"
+        theme_val = normalize_theme(self.theme_combo.currentData())
         use_local_tts_val = (self.tts_combo.currentIndex() == 1)
         ai_tts_provider = "xiaomi" if self.ai_tts_provider_combo.currentIndex() == 1 else "edge"
         new_config = {
