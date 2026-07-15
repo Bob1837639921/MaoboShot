@@ -11,6 +11,7 @@ config.json
 # PyInstaller 打包生成的文件
 build/
 dist/
+release/
 *.spec
 
 # IDE 配置
