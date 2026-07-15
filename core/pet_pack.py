@@ -62,6 +62,7 @@ class PetPack:
             "reference_height": reference_height,
             "baseline": baseline,
             "idle_frame_indices": idle_frame_indices,
+            "loop": bool(spec.get("loop", False)),
         }
 
 

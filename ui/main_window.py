@@ -41,6 +41,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.last_clipboard_time = 0
         self.last_clipboard_text = ""
         self.is_playing_tts = False
+        self._pet_bubble_for_current_translation = False
 
         self.setup_tray()
         self.tts_status_signal.connect(self.update_play_btn_status)
@@ -86,8 +87,9 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self._update_window_width(text)
             self.adjustSize()
 
+            self._pet_bubble_for_current_translation = False
             self._show_translation_loading()
-            self.pet.begin_translation(text)
+            self.pet.begin_translation(text, show_bubble=False)
             self.request_translation_signal.emit(text)
 
     def _update_window_width(self, text=""):
@@ -251,7 +253,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
 
     def handle_ocr_started(self):
         if hasattr(self, "pet"):
-            self.pet.set_state("ocr", "正在识别截图")
+            self.pet.set_state("ocr")
         self.input_edit.hide()
         self.mode_label.hide()
         self.translate_btn.hide()
@@ -275,7 +277,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         logger.info("OCR完成，触发翻译")
         if not text or not text.strip():
             if hasattr(self, "pet"):
-                self.pet.set_state("error", "没有识别到文字，请重新截图")
+                self.pet.set_state("error")
             self.ocr_status_title.setText("未识别到文字")
             self.ocr_status_desc.setText("请调整选区，确保文字清晰后重试")
             self.ocr_status_dot.setStyleSheet(
@@ -307,12 +309,17 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self._update_window_width(text)
             self.adjustSize()
 
+            self._pet_bubble_for_current_translation = False
             self._show_translation_loading()
-            self.pet.begin_translation(text)
+            self.pet.begin_translation(text, show_bubble=False)
             self.request_translation_signal.emit(text)
 
-    def handle_clipboard_update(self, text, popup=True, ignore_move=False):
+    def handle_clipboard_update(self, text, popup=True, ignore_move=False, pet_bubble=None):
         if not text: return
+
+        if pet_bubble is None:
+            pet_bubble = not popup and self.pet.can_show_bubble
+        self._pet_bubble_for_current_translation = bool(pet_bubble)
 
         self._show_translation_workspace()
         
@@ -328,7 +335,10 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.adjustSize()
 
         self._show_translation_loading()
-        self.pet.begin_translation(text)
+        self.pet.begin_translation(
+            text,
+            show_bubble=self._pet_bubble_for_current_translation,
+        )
         self.request_translation_signal.emit(text)
         if popup:
             self.handle_show_window(ignore_move=ignore_move)
@@ -420,7 +430,11 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             
         self._last_results = results
         if hasattr(self, "pet"):
-            self.pet.update_translation(results, self.current_text_for_speech)
+            self.pet.update_translation(
+                results,
+                self.current_text_for_speech,
+                show_bubble=self._pet_bubble_for_current_translation,
+            )
         
         doubao_raw = results.get("doubao", "") or ""
         doubao_error = results.get("doubao_error", "") or ""
@@ -684,10 +698,18 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             # 成功触发双击复制 (间隔 0.15 ~ 0.6秒，且内容一致)
             if text != getattr(self, '_last_translated_text', ''):
                 # 文本是新的，触发网络翻译请求
-                self.handle_clipboard_update(text, popup=True)
+                use_pet_bubble = self.pet.can_show_bubble
+                self.handle_clipboard_update(
+                    text,
+                    popup=not use_pet_bubble,
+                    pet_bubble=use_pet_bubble,
+                )
             else:
-                # 文本和上次一模一样，不再请求网络，只把窗口叫出来并移动到鼠标位置
-                self.handle_show_window()
+                # 文本和上次一样，不再请求网络；优先恢复宠物结果气泡。
+                if self.pet.can_show_bubble:
+                    self.pet.show_bubble()
+                else:
+                    self.handle_show_window()
                 
             # 重置状态，防止快速按第三下时错误触发
             self.last_clipboard_time = 0

@@ -72,6 +72,7 @@ class PetPackTests(unittest.TestCase):
                                 "reference_height": 198,
                                 "baseline": 203,
                                 "idle_frame_indices": [0, 1],
+                                "loop": True,
                             }
                         },
                     }
@@ -86,6 +87,7 @@ class PetPackTests(unittest.TestCase):
             self.assertEqual(animation["reference_height"], 198)
             self.assertEqual(animation["baseline"], 203)
             self.assertEqual(animation["idle_frame_indices"], {0, 1})
+            self.assertTrue(animation["loop"])
 
     def test_rejects_animation_frame_outside_pack(self):
         with tempfile.TemporaryDirectory() as temp_dir:

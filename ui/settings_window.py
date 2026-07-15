@@ -371,7 +371,8 @@ class SettingsWindow(QDialog):
         scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
         
         inner_widget = QWidget()
-        inner_widget.setStyleSheet("QWidget { background-color: transparent; }")
+        inner_widget.setObjectName("ttsScrollContent")
+        inner_widget.setStyleSheet("QWidget#ttsScrollContent { background-color: transparent; }")
         inner_layout = QVBoxLayout(inner_widget)
         inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.addWidget(engine_card)

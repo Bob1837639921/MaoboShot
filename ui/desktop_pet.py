@@ -1,4 +1,5 @@
 import math
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,6 +32,14 @@ PET_STATES = {
     "partial_error",
     "error",
     "speaking",
+}
+
+STATE_ACTIONS = {
+    "ocr": "waiting",
+    "translating": "running",
+    "success": "review",
+    "partial_error": "failed",
+    "error": "failed",
 }
 
 
@@ -240,6 +249,10 @@ class PetSprite(QWidget):
     def has_action(self, action: str) -> bool:
         return action in self._frame_animations or action in {"greet", "jump", "blink"}
 
+    @property
+    def current_action(self):
+        return self._action
+
     def set_state(self, state: str, motion: dict):
         next_state = state if state in PET_STATES else "idle"
         if next_state != self._state and self._action in self._frame_animations:
@@ -264,6 +277,8 @@ class PetSprite(QWidget):
     def play_action(self, action: str):
         if action not in {"greet", "jump", "blink"} and action not in self._frame_animations:
             return
+        if self._action == action:
+            return
         self._action = action
         self._action_phase = 0
         self._frame_index = 0
@@ -274,6 +289,11 @@ class PetSprite(QWidget):
         if not self._timer.isActive():
             self._timer.start()
         self.update()
+
+    def stop_action(self):
+        if self._action:
+            self._finish_action()
+            self.update()
 
     def _finish_action(self):
         self._action = None
@@ -287,7 +307,11 @@ class PetSprite(QWidget):
             animation = self._frame_animations[self._action]
             self._frame_index += 1
             if self._frame_index >= len(animation["frames"]):
-                self._finish_action()
+                if animation.get("loop", False):
+                    self._frame_index = 0
+                    self._timer.setInterval(animation["durations_ms"][0])
+                else:
+                    self._finish_action()
             else:
                 self._timer.setInterval(animation["durations_ms"][self._frame_index])
             self.update()
@@ -461,11 +485,20 @@ class DesktopPetWindow(QWidget):
         self._pet_top_left = QPoint()
         self._drag_window_origin = QPoint()
         self._drag_cursor_origin = QPoint()
+        self._last_drag_cursor = QPoint()
+        self._dragging = False
+        self._drag_active = False
+        self._state_action = None
+        self._translation_bubble_allowed = True
         self._sprite_align_right = True
 
         self._bubble_timer = QTimer(self)
         self._bubble_timer.setSingleShot(True)
         self._bubble_timer.timeout.connect(self.hide_bubble)
+
+        self._idle_action_timer = QTimer(self)
+        self._idle_action_timer.setSingleShot(True)
+        self._idle_action_timer.timeout.connect(self._play_idle_action)
 
         self._build_ui()
         self.reload_settings(initial=True)
@@ -511,12 +544,12 @@ class DesktopPetWindow(QWidget):
         self.copy_btn = QPushButton("复制")
         self.copy_btn.setObjectName("petBubbleAction")
         self.copy_btn.clicked.connect(self.copy_result)
-        self.speak_btn = QPushButton("朗读")
+        self.speak_btn = QPushButton("朗读原文")
         self.speak_btn.setObjectName("petBubbleAction")
         self.speak_btn.clicked.connect(self.speak_result)
         self.open_btn = QPushButton("查看完整结果")
         self.open_btn.setObjectName("petBubblePrimary")
-        self.open_btn.clicked.connect(self.open_main_requested.emit)
+        self.open_btn.clicked.connect(self._open_main_from_bubble)
         actions.addWidget(self.copy_btn)
         actions.addWidget(self.speak_btn)
         actions.addStretch()
@@ -593,6 +626,11 @@ class DesktopPetWindow(QWidget):
         else:
             self.hide()
         self.visibility_changed.emit(self._enabled)
+        self._schedule_idle_action()
+
+    @property
+    def can_show_bubble(self) -> bool:
+        return bool(self._enabled and self._bubble_enabled)
 
     def _apply_theme(self, theme_name):
         palette = theme_palette(theme_name)
@@ -706,10 +744,22 @@ class DesktopPetWindow(QWidget):
 
     def _start_drag(self, cursor_pos: QPoint):
         self._drag_cursor_origin = cursor_pos
+        self._last_drag_cursor = cursor_pos
         self._drag_window_origin = self.pos()
+        self._dragging = True
+        self._drag_active = False
+        self._idle_action_timer.stop()
 
     def _drag_to(self, cursor_pos: QPoint):
         delta = cursor_pos - self._drag_cursor_origin
+        if not self._drag_active and delta.manhattanLength() >= 4:
+            self._drag_active = True
+        if self._drag_active:
+            horizontal_delta = cursor_pos.x() - self._last_drag_cursor.x()
+            action = "running-right" if horizontal_delta >= 0 else "running-left"
+            if abs(horizontal_delta) >= 1 and self.sprite.has_action(action):
+                self.sprite.play_action(action)
+        self._last_drag_cursor = cursor_pos
         self.move(self._drag_window_origin + delta)
         sprite_offset_x = self.width() - self.sprite.width() if self._sprite_align_right else 0
         self._pet_top_left = QPoint(
@@ -718,11 +768,18 @@ class DesktopPetWindow(QWidget):
         )
 
     def _finish_drag(self):
+        was_active = self._drag_active
+        self._dragging = False
+        self._drag_active = False
+        if was_active:
+            self.sprite.stop_action()
+            self._apply_state_action()
         self._pet_top_left = self._clamp_pet_position(self._pet_top_left)
         self._reanchor()
         config = load_app_config()
         config["PET_POSITION"] = {"x": self._pet_top_left.x(), "y": self._pet_top_left.y()}
         save_app_config(config)
+        self._schedule_idle_action()
 
     def _show_context_menu(self, global_pos: QPoint):
         menu = QMenu()
@@ -759,13 +816,43 @@ class DesktopPetWindow(QWidget):
         self.hide()
         self.visibility_changed.emit(False)
 
+    def _schedule_idle_action(self):
+        self._idle_action_timer.stop()
+        if self._enabled:
+            self._idle_action_timer.start(random.randint(12000, 28000))
+
+    def _play_idle_action(self):
+        if (
+            self._enabled
+            and self.isVisible()
+            and self._state == "idle"
+            and not self._dragging
+            and not self.sprite.current_action
+            and self.sprite.has_action("lick_paw")
+        ):
+            self.sprite.play_action("lick_paw")
+        self._schedule_idle_action()
+
+    def _apply_state_action(self):
+        action = STATE_ACTIONS.get(self._state)
+        if action and self.sprite.has_action(action):
+            self._state_action = action
+            self.sprite.play_action(action)
+        elif self._state_action:
+            if self.sprite.current_action == self._state_action:
+                self.sprite.stop_action()
+            self._state_action = None
+
+    def _open_main_from_bubble(self):
+        self.hide_bubble()
+        self.open_main_requested.emit()
+
     def set_state(self, state: str, message: str = ""):
         state = state if state in PET_STATES else "idle"
         self._state = state
         motion = self._pack.motion_for(state) if self._pack else {}
         self.sprite.set_state(state, motion)
-        if state == "success":
-            self.sprite.play_action("jump")
+        self._apply_state_action()
         if message and self._bubble_enabled:
             self.bubble_title.setText("ManboShot")
             self.bubble_status.setText("进行中")
@@ -775,11 +862,12 @@ class DesktopPetWindow(QWidget):
             self.speak_btn.setEnabled(False)
             self.show_bubble(timeout_ms=0)
 
-    def begin_translation(self, source_text: str):
+    def begin_translation(self, source_text: str, show_bubble: bool = True):
         self._source_text = source_text.strip()
         self._result_text = ""
+        self._translation_bubble_allowed = bool(show_bubble)
         self.set_state("translating")
-        if self._bubble_enabled:
+        if self._bubble_enabled and self._translation_bubble_allowed:
             self.bubble_title.setText("ManboShot · 正在翻译")
             self.bubble_status.setText("处理中")
             self.source_label.setText(self._elide(self._source_text, 110))
@@ -787,10 +875,14 @@ class DesktopPetWindow(QWidget):
             self.copy_btn.setEnabled(False)
             self.speak_btn.setEnabled(False)
             self.show_bubble(timeout_ms=0)
+        else:
+            self.hide_bubble()
 
-    def update_translation(self, results: dict, source_text: str):
+    def update_translation(self, results: dict, source_text: str, show_bubble=None):
         if not self._enabled:
             return
+        if show_bubble is not None:
+            self._translation_bubble_allowed = bool(show_bubble)
         self._source_text = source_text.strip() or self._source_text
         google_text = (results.get("google", "") or "").strip()
         ai_error = (results.get("doubao_error", "") or "").strip()
@@ -798,7 +890,7 @@ class DesktopPetWindow(QWidget):
 
         if resolved.state == "translating":
             self.set_state("translating")
-            if resolved.result_text and self._bubble_enabled:
+            if resolved.result_text and self._bubble_enabled and self._translation_bubble_allowed:
                 self._result_text = resolved.result_text
                 self.result_label.setText(self._elide(resolved.result_text, 260))
                 self.bubble_status.setText(resolved.engine_label)
@@ -815,7 +907,7 @@ class DesktopPetWindow(QWidget):
             self.result_label.setText(self._elide(resolved.result_text, 360))
             self.copy_btn.setEnabled(True)
             self.speak_btn.setEnabled(True)
-            if self._bubble_enabled:
+            if self._bubble_enabled and self._translation_bubble_allowed:
                 self.show_bubble(timeout_ms=14000)
             QTimer.singleShot(1800, lambda: self.set_state("idle") if self._state == state else None)
             return
@@ -829,7 +921,7 @@ class DesktopPetWindow(QWidget):
         self.result_label.setText(self._elide(error_text, 220))
         self.copy_btn.setEnabled(False)
         self.speak_btn.setEnabled(False)
-        if self._bubble_enabled:
+        if self._bubble_enabled and self._translation_bubble_allowed:
             self.show_bubble(timeout_ms=10000)
 
     def show_bubble(self, timeout_ms=14000):
@@ -857,8 +949,8 @@ class DesktopPetWindow(QWidget):
         QTimer.singleShot(1200, lambda: self.copy_btn.setText("复制"))
 
     def speak_result(self):
-        if self._result_text:
-            self.speak_requested.emit(self._result_text)
+        if self._source_text:
+            self.speak_requested.emit(self._source_text)
 
     @staticmethod
     def _elide(text: str, limit: int) -> str:

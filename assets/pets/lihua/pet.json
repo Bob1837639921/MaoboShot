@@ -36,7 +36,87 @@
       "durations_ms": [180, 130, 140, 150, 170, 170, 150, 260],
       "reference_height": 198,
       "baseline": 203,
-      "idle_frame_indices": [0, 7]
+      "idle_frame_indices": [0, 7],
+      "loop": false
+    },
+    "waiting": {
+      "frames": [
+        "animations/waiting/frames/00.png",
+        "animations/waiting/frames/01.png",
+        "animations/waiting/frames/02.png",
+        "animations/waiting/frames/03.png",
+        "animations/waiting/frames/04.png",
+        "animations/waiting/frames/05.png"
+      ],
+      "durations_ms": [180, 180, 180, 180, 180, 220],
+      "reference_height": 198,
+      "baseline": 203,
+      "idle_frame_indices": [],
+      "loop": true
+    },
+    "running": {
+      "frames": [
+        "animations/running/frames/00.png",
+        "animations/running/frames/01.png",
+        "animations/running/frames/02.png",
+        "animations/running/frames/03.png",
+        "animations/running/frames/04.png",
+        "animations/running/frames/05.png"
+      ],
+      "durations_ms": [130, 130, 130, 130, 130, 150],
+      "reference_height": 198,
+      "baseline": 203,
+      "idle_frame_indices": [],
+      "loop": true
+    },
+    "review": {
+      "frames": [
+        "animations/review/frames/00.png",
+        "animations/review/frames/01.png",
+        "animations/review/frames/02.png",
+        "animations/review/frames/03.png",
+        "animations/review/frames/04.png",
+        "animations/review/frames/05.png"
+      ],
+      "durations_ms": [180, 180, 180, 180, 180, 300],
+      "reference_height": 198,
+      "baseline": 203,
+      "idle_frame_indices": [],
+      "loop": false
+    },
+    "running-right": {
+      "frames": [
+        "animations/running-right/frames/00.png",
+        "animations/running-right/frames/01.png",
+        "animations/running-right/frames/02.png",
+        "animations/running-right/frames/03.png",
+        "animations/running-right/frames/04.png",
+        "animations/running-right/frames/05.png",
+        "animations/running-right/frames/06.png",
+        "animations/running-right/frames/07.png"
+      ],
+      "durations_ms": [95, 95, 95, 95, 95, 95, 95, 110],
+      "reference_height": 198,
+      "baseline": 203,
+      "idle_frame_indices": [],
+      "loop": true
+    },
+    "running-left": {
+      "frames": [
+        "animations/running-left/frames/00.png",
+        "animations/running-left/frames/01.png",
+        "animations/running-left/frames/02.png",
+        "animations/running-left/frames/03.png",
+        "animations/running-left/frames/04.png",
+        "animations/running-left/frames/05.png",
+        "animations/running-left/frames/06.png",
+        "animations/running-left/frames/07.png"
+      ],
+      "durations_ms": [95, 95, 95, 95, 95, 95, 95, 110],
+      "reference_height": 198,
+      "baseline": 203,
+      "idle_frame_indices": [],
+      "loop": true
     }
   },
   "identity_anchors": [
