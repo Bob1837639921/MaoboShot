@@ -17,7 +17,7 @@
 | `DOUBAO_API_KEY` | AI 翻译 API Key；字段名为历史兼容保留，界面统一称为“AI 翻译” |
 | `DOUBAO_MODEL_EP` | OpenAI 兼容接口使用的模型名称或接入点 |
 | `AI_BASE_URL` | OpenAI 兼容接口地址 |
-| `THEME` | `light` 或 `dark` |
+| `THEME` | `light`、`dark`、`graphite`、`blueprint` 或 `signal` |
 | `USE_LOCAL_TTS` | 是否优先使用本地 Piper TTS |
 | `AI_TTS_PROVIDER` | `edge` 或 `xiaomi` |
 | `XIAOMI_TTS_API_KEY` | 小米 MiMo TTS 或兼容网关 Key |
