@@ -12,6 +12,7 @@ config.json
 build/
 dist/
 release/
+tmp/
 *.spec
 
 # IDE 配置

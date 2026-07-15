@@ -61,7 +61,12 @@ DEFAULT_CONFIG = {
     "XIAOMI_TTS_STYLE": os.getenv("XIAOMI_TTS_STYLE", ""),
     "AUDIO_PLAYER": "pygame",
     "HOTKEY_SHOW": "Alt+Q",
-    "HOTKEY_SNIP": "Alt+E"
+    "HOTKEY_SNIP": "Alt+E",
+    "PET_ENABLED": True,
+    "PET_ID": "lihua",
+    "PET_BUBBLE_ENABLED": True,
+    "PET_SCALE": 100,
+    "PET_POSITION": {}
 }
 
 def load_app_config():

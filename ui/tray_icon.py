@@ -30,6 +30,10 @@ class ManboShotTrayIcon(QSystemTrayIcon):
         
         snip_action = QAction(f"截图翻译 ({snip_str})", self)
         snip_action.triggered.connect(self.window.start_snipping)
+
+        pet_enabled = bool(config.get("PET_ENABLED", True))
+        pet_action = QAction("隐藏桌面宠物" if pet_enabled else "显示桌面宠物", self)
+        pet_action.triggered.connect(self.window.toggle_pet_visibility)
         
         settings_action = QAction("⚙️ 设置", self)
         settings_action.triggered.connect(self.window.show_settings)
@@ -39,6 +43,7 @@ class ManboShotTrayIcon(QSystemTrayIcon):
 
         self.tray_menu.addAction(show_action)
         self.tray_menu.addAction(snip_action)
+        self.tray_menu.addAction(pet_action)
         self.tray_menu.addSeparator()
         self.tray_menu.addAction(settings_action)
         self.tray_menu.addAction(quit_action)

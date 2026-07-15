@@ -1,9 +1,11 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QLineEdit, QTextEdit, QPushButton, QMessageBox, QComboBox,
-                               QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea, QKeySequenceEdit)
+                               QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea,
+                               QKeySequenceEdit, QCheckBox, QSlider)
 from PySide6.QtCore import QRectF, Qt, QSize
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPainterPath, QPixmap
 from core.config import load_app_config, save_app_config, ICON_PATH
+from core.pet_pack import discover_pet_packs
 from ui.theme import (
     THEME_LABELS,
     THEME_ORDER,
@@ -124,7 +126,7 @@ class SettingsWindow(QDialog):
         self.sidebar.setFocusPolicy(Qt.NoFocus)
         self.sidebar.currentRowChanged.connect(self.change_page)
 
-        items = ["AI 翻译", "语音与 TTS", "通用设置"]
+        items = ["AI 翻译", "语音与 TTS", "桌面宠物", "通用设置"]
         for item_text in items:
             item = QListWidgetItem(item_text)
             item.setSizeHint(QSize(150, 44))
@@ -151,10 +153,12 @@ class SettingsWindow(QDialog):
         
         self.page_ai = self.create_ai_page()
         self.page_tts = self.create_tts_page()
+        self.page_pet = self.create_pet_page()
         self.page_general = self.create_general_page()
 
         self.stacked_widget.addWidget(self.page_ai)
         self.stacked_widget.addWidget(self.page_tts)
+        self.stacked_widget.addWidget(self.page_pet)
         self.stacked_widget.addWidget(self.page_general)
 
         # ================= Bottom Buttons =================
@@ -186,10 +190,11 @@ class SettingsWindow(QDialog):
 
     def change_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
-        titles = ["AI 翻译", "语音与 TTS", "通用设置"]
+        titles = ["AI 翻译", "语音与 TTS", "桌面宠物", "通用设置"]
         descriptions = [
             "连接兼容 OpenAI 格式的模型服务",
             "选择朗读引擎、服务商与声音风格",
+            "管理桌面伙伴、结果气泡与角色资源",
             "管理外观、快捷键与音频播放方式",
         ]
         if 0 <= index < len(titles):
@@ -434,6 +439,65 @@ class SettingsWindow(QDialog):
         layout.addStretch()
         return page
 
+    def create_pet_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)
+
+        pet_layout = QVBoxLayout()
+        pet_layout.setSpacing(12)
+
+        self.pet_enabled_check = QCheckBox("在桌面显示宠物")
+        self.pet_enabled_check.setToolTip("关闭后可从托盘菜单重新开启")
+        pet_layout.addWidget(self.pet_enabled_check)
+
+        pet_lbl = QLabel("选择桌面伙伴")
+        pet_lbl.setProperty("class", "input-label")
+        self.pet_combo = ClearArrowComboBox()
+        self.pet_combo.setMinimumHeight(42)
+        for pack in discover_pet_packs():
+            self.pet_combo.addItem(pack.name, pack.pet_id)
+        pet_layout.addWidget(pet_lbl)
+        pet_layout.addWidget(self.pet_combo)
+
+        self.pet_bubble_check = QCheckBox("翻译时显示结果气泡")
+        self.pet_bubble_check.setToolTip("主翻译窗口仍保留完整的双引擎结果")
+        pet_layout.addWidget(self.pet_bubble_check)
+
+        scale_header = QHBoxLayout()
+        scale_lbl = QLabel("宠物大小")
+        scale_lbl.setProperty("class", "input-label")
+        self.pet_scale_value = QLabel("100%")
+        self.pet_scale_value.setProperty("class", "card-desc")
+        scale_header.addWidget(scale_lbl)
+        scale_header.addStretch()
+        scale_header.addWidget(self.pet_scale_value)
+        self.pet_scale_slider = QSlider(Qt.Horizontal)
+        self.pet_scale_slider.setRange(70, 140)
+        self.pet_scale_slider.setSingleStep(5)
+        self.pet_scale_slider.setPageStep(10)
+        self.pet_scale_slider.setTickInterval(10)
+        self.pet_scale_slider.valueChanged.connect(
+            lambda value: self.pet_scale_value.setText(f"{value}%")
+        )
+        pet_layout.addLayout(scale_header)
+        pet_layout.addWidget(self.pet_scale_slider)
+
+        hint = QLabel("双击宠物打开翻译窗口；拖动可跨屏摆放；右键可快速管理。")
+        hint.setProperty("class", "card-desc")
+        hint.setWordWrap(True)
+        pet_layout.addWidget(hint)
+
+        card = self.create_card(
+            "桌面伙伴",
+            "宠物动作会跟随识图、翻译、失败与朗读状态变化。角色采用独立资源包，可随时替换。",
+            pet_layout,
+        )
+        layout.addWidget(card)
+        layout.addStretch()
+        return page
+
     def _on_player_changed(self, index):
         if index == 1:
             from core.config import MPV_EXE, TOOL_DIR
@@ -477,6 +541,12 @@ class SettingsWindow(QDialog):
         snip_hk = config.get("HOTKEY_SNIP", "Alt+E")
         self.hotkey_show_edit.setKeySequence(QKeySequence(show_hk))
         self.hotkey_snip_edit.setKeySequence(QKeySequence(snip_hk))
+
+        self.pet_enabled_check.setChecked(bool(config.get("PET_ENABLED", True)))
+        pet_index = self.pet_combo.findData(config.get("PET_ID", "lihua"))
+        self.pet_combo.setCurrentIndex(max(0, pet_index))
+        self.pet_bubble_check.setChecked(bool(config.get("PET_BUBBLE_ENABLED", True)))
+        self.pet_scale_slider.setValue(max(70, min(140, int(config.get("PET_SCALE", 100)))))
         
         # Apply theme immediately on load
         self.apply_theme_from_combo(self.theme_combo.currentIndex())
@@ -617,6 +687,29 @@ class SettingsWindow(QDialog):
                 border-bottom-right-radius: 5px;
                 width: 38px;
             }}
+            QCheckBox {{
+                color: {text_main};
+                font-size: 13px;
+                spacing: 9px;
+                min-height: 28px;
+            }}
+            QSlider::groove:horizontal {{
+                height: 4px;
+                background-color: {input_border};
+                border-radius: 2px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background-color: {primary_bg};
+                border-radius: 2px;
+            }}
+            QSlider::handle:horizontal {{
+                width: 18px;
+                height: 18px;
+                margin: -7px 0;
+                border-radius: 9px;
+                background-color: {bg_card};
+                border: 2px solid {primary_bg};
+            }}
             QComboBox::drop-down:hover {{
                 background-color: {btn_hover};
             }}
@@ -698,8 +791,14 @@ class SettingsWindow(QDialog):
             "XIAOMI_TTS_STYLE": self.xiaomi_style_input.toPlainText().strip(),
             "AUDIO_PLAYER": "mpv" if self.player_combo.currentIndex() == 1 else "pygame",
             "HOTKEY_SHOW": self.hotkey_show_edit.keySequence().toString(),
-            "HOTKEY_SNIP": self.hotkey_snip_edit.keySequence().toString()
+            "HOTKEY_SNIP": self.hotkey_snip_edit.keySequence().toString(),
+            "PET_ENABLED": self.pet_enabled_check.isChecked(),
+            "PET_ID": self.pet_combo.currentData() or "lihua",
+            "PET_BUBBLE_ENABLED": self.pet_bubble_check.isChecked(),
+            "PET_SCALE": self.pet_scale_slider.value(),
         }
-        save_app_config(new_config)
+        merged_config = load_app_config()
+        merged_config.update(new_config)
+        save_app_config(merged_config)
         QMessageBox.information(self, "成功", "设置已保存，立即生效！")
         self.accept()

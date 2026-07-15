@@ -3,17 +3,23 @@ import argparse
 import shutil
 from pathlib import Path
 
-def build(deploy_dir=None):
+def build(deploy_dir=None, output_root=None):
     # 获取项目根目录
     project_root = Path(__file__).parent.absolute()
+    output_root = Path(output_root).expanduser().resolve() if output_root else project_root
+    output_root.mkdir(parents=True, exist_ok=True)
     
     # 清理历史构建
-    dist_dir = project_root / 'dist'
-    build_dir = project_root / 'build'
+    dist_dir = output_root / 'dist'
+    build_dir = output_root / 'build'
+    spec_dir = output_root / 'spec'
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
     if build_dir.exists():
         shutil.rmtree(build_dir)
+    if spec_dir.exists():
+        shutil.rmtree(spec_dir)
+    spec_dir.mkdir(parents=True, exist_ok=True)
         
     icon_path = project_root / "icon.ico"
     assets_path = project_root / "assets"
@@ -27,6 +33,9 @@ def build(deploy_dir=None):
         '--windowed',               # 窗口模式
         '--noconfirm',              # 覆盖不询问
         '--clean',                  # 清理 PyInstaller 缓存
+        f'--distpath={dist_dir}',
+        f'--workpath={build_dir}',
+        f'--specpath={spec_dir}',
         
         # --- 📦 核心资源 ---
         f'--icon={icon_path}',      # 设置应用图标
@@ -60,6 +69,8 @@ def build(deploy_dir=None):
         '--hidden-import=eng_to_ipa',
         '--hidden-import=deep_translator',
         '--hidden-import=PIL',
+        '--hidden-import=PIL.Image',
+        '--hidden-import=PIL.ImageDraw',
         '--hidden-import=PySide6.QtNetwork', # Qt 的网络库，部分环境下如果缺失会崩溃
     ])
 
@@ -94,5 +105,9 @@ if __name__ == '__main__':
         "--deploy-dir",
         help="Optional directory to receive a clean copy of dist/ManboShot after build."
     )
+    parser.add_argument(
+        "--output-root",
+        help="Optional isolated root for build, spec, and dist outputs."
+    )
     args = parser.parse_args()
-    build(args.deploy_dir)
+    build(args.deploy_dir, args.output_root)

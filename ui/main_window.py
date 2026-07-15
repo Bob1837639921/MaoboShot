@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, Signal, Slot, QTimer, QThread, QPropertyAnimation
 from PySide6.QtGui import QCursor, QAction, QIcon, QColor
 from ui.settings_window import SettingsWindow
 from ui.ui_main_window import Ui_FloatingWindow, apply_window_theme
+from ui.desktop_pet import DesktopPetWindow
 
 from core.config import ICON_PATH, logger, load_app_config
 from core.tts_engine import play_voice_worker, stop_tts_playback
@@ -53,6 +54,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.apply_theme()
         self._init_workers()
         self._init_hotkeys()
+        self._init_desktop_pet()
 
         # 移除之前的实时监控，改为安装事件过滤器监听 Enter 键
         self.input_edit.installEventFilter(self)
@@ -85,6 +87,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.adjustSize()
 
             self._show_translation_loading()
+            self.pet.begin_translation(text)
             self.request_translation_signal.emit(text)
 
     def _update_window_width(self, text=""):
@@ -205,6 +208,33 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
                 
         self.input_edit.setPlaceholderText("输入或粘贴需要翻译的内容")
 
+    def _init_desktop_pet(self):
+        self.pet = DesktopPetWindow()
+        self.pet.open_main_requested.connect(lambda: self.handle_show_window(reset=False))
+        self.pet.settings_requested.connect(self.show_settings)
+        self.pet.speak_requested.connect(self._play_pet_text)
+        self.pet.visibility_changed.connect(lambda _visible: self.tray_icon.setup_menu())
+
+    def _play_pet_text(self, text):
+        if not text:
+            return
+        stop_tts_playback()
+        self.pet.set_state("speaking")
+        self.is_playing_tts = True
+        import threading
+        threading.Thread(
+            target=play_voice_worker,
+            args=(text, self.tts_status_signal),
+            daemon=True,
+        ).start()
+
+    def toggle_pet_visibility(self):
+        config = load_app_config()
+        config["PET_ENABLED"] = not bool(config.get("PET_ENABLED", True))
+        from core.config import save_app_config
+        save_app_config(config)
+        self.pet.reload_settings()
+
     def setup_tray(self):
         from ui.tray_icon import ManboShotTrayIcon
         self.tray_icon = ManboShotTrayIcon(self)
@@ -217,8 +247,11 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self._init_hotkeys()  # 重新初始化热键与 Placeholder
             self.tray_icon.setup_menu()  # 重新加载托盘菜单文案
             self.apply_theme()
+            self.pet.reload_settings()
 
     def handle_ocr_started(self):
+        if hasattr(self, "pet"):
+            self.pet.set_state("ocr", "正在识别截图")
         self.input_edit.hide()
         self.mode_label.hide()
         self.translate_btn.hide()
@@ -241,6 +274,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
     def handle_ocr_result(self, text):
         logger.info("OCR完成，触发翻译")
         if not text or not text.strip():
+            if hasattr(self, "pet"):
+                self.pet.set_state("error", "没有识别到文字，请重新截图")
             self.ocr_status_title.setText("未识别到文字")
             self.ocr_status_desc.setText("请调整选区，确保文字清晰后重试")
             self.ocr_status_dot.setStyleSheet(
@@ -273,6 +308,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.adjustSize()
 
             self._show_translation_loading()
+            self.pet.begin_translation(text)
             self.request_translation_signal.emit(text)
 
     def handle_clipboard_update(self, text, popup=True, ignore_move=False):
@@ -292,6 +328,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.adjustSize()
 
         self._show_translation_loading()
+        self.pet.begin_translation(text)
         self.request_translation_signal.emit(text)
         if popup:
             self.handle_show_window(ignore_move=ignore_move)
@@ -382,6 +419,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             return
             
         self._last_results = results
+        if hasattr(self, "pet"):
+            self.pet.update_translation(results, self.current_text_for_speech)
         
         doubao_raw = results.get("doubao", "") or ""
         doubao_error = results.get("doubao_error", "") or ""
@@ -555,6 +594,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.play_btn.setText("朗读原文")
             self.play_btn.setEnabled(True)
             self.is_playing_tts = False
+            if hasattr(self, "pet"):
+                self.pet.set_state("idle")
         else:
             # 播放中按钮文本提示打断操作，并保持 Enabled=True 允许点击打断
             self.play_btn.setText(f"停止播放 · {text}")
@@ -684,6 +725,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
                 self.worker.stop()
             self.thread.quit()
             self.thread.wait()
+        if hasattr(self, "pet"):
+            self.pet.close()
         super().closeEvent(event)
 
 

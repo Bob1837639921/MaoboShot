@@ -1,6 +1,7 @@
 {
     "DOUBAO_API_KEY": "",
     "DOUBAO_MODEL_EP": "",
+    "AI_BASE_URL": "https://ark.cn-beijing.volces.com/api/v3",
     "THEME": "light",
     "USE_LOCAL_TTS": true,
     "AI_TTS_PROVIDER": "edge",
@@ -8,5 +9,13 @@
     "XIAOMI_TTS_BASE_URL": "https://token-plan-cn.xiaomimimo.com/v1",
     "XIAOMI_TTS_MODEL": "mimo-v2.5-tts",
     "XIAOMI_TTS_VOICE": "mimo_default",
-    "XIAOMI_TTS_STYLE": ""
+    "XIAOMI_TTS_STYLE": "",
+    "AUDIO_PLAYER": "pygame",
+    "HOTKEY_SHOW": "Alt+Q",
+    "HOTKEY_SNIP": "Alt+E",
+    "PET_ENABLED": true,
+    "PET_ID": "lihua",
+    "PET_BUBBLE_ENABLED": true,
+    "PET_SCALE": 100,
+    "PET_POSITION": {}
 }

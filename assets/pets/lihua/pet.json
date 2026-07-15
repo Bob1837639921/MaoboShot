@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "lihua",
+  "name": "狸花翻译官",
+  "description": "以用户家中的狸花猫为原型制作的 ManboShot 桌面伙伴。",
+  "sprite": "lihua-idle-v2.png",
+  "canvas": {
+    "width": 192,
+    "height": 208
+  },
+  "source_processing": {
+    "background": "light-grid",
+    "auto_crop": true,
+    "padding": 8
+  },
+  "rig": {
+    "eyelid_color": "#241d19",
+    "eyelid_fill": "#66563d",
+    "eyes": [
+      [0.15, 0.22, 0.24, 0.285],
+      [0.335, 0.235, 0.43, 0.295]
+    ]
+  },
+  "animations": {
+    "lick_paw": {
+      "frames": [
+        "animations/lick-paw/frames/00.png",
+        "animations/lick-paw/frames/01.png",
+        "animations/lick-paw/frames/02.png",
+        "animations/lick-paw/frames/03.png",
+        "animations/lick-paw/frames/04.png",
+        "animations/lick-paw/frames/05.png",
+        "animations/lick-paw/frames/06.png",
+        "animations/lick-paw/frames/07.png"
+      ],
+      "durations_ms": [180, 130, 140, 150, 170, 170, 150, 260],
+      "reference_height": 198,
+      "baseline": 203,
+      "idle_frame_indices": [0, 7]
+    }
+  },
+  "identity_anchors": [
+    "额头深色 M 纹",
+    "左右脸颊条纹",
+    "灰棕色虎斑",
+    "深色环纹尾巴",
+    "蓝色 ManboShot 围巾"
+  ],
+  "motion_presets": {
+    "idle": {"interval_ms": 90, "bob_px": 2, "tilt_deg": 0.5, "scale_pct": 1.0},
+    "ocr": {"interval_ms": 55, "bob_px": 1, "tilt_deg": 2.0, "scale_pct": 1.0},
+    "translating": {"interval_ms": 55, "bob_px": 3, "tilt_deg": 1.5, "scale_pct": 1.01},
+    "success": {"interval_ms": 45, "bob_px": 8, "tilt_deg": 0.8, "scale_pct": 1.03},
+    "partial_error": {"interval_ms": 100, "bob_px": 1, "tilt_deg": 2.5, "scale_pct": 0.98},
+    "error": {"interval_ms": 120, "bob_px": 1, "tilt_deg": 4.0, "scale_pct": 0.96},
+    "speaking": {"interval_ms": 65, "bob_px": 3, "tilt_deg": 0.6, "scale_pct": 1.02}
+  }
+}

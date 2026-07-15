@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square)](https://www.python.org/)
 [![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?style=flat-square)](https://doc.qt.io/qtforpython-6/)
 
-ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪贴板、手动输入或屏幕截图中获取文字，并行提供 AI 语境翻译与 Google 快速翻译；同时支持 OCR、原文朗读、五套可切换主题和自定义快捷键。
+ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪贴板、手动输入或屏幕截图中获取文字，并行提供 AI 语境翻译与 Google 快速翻译；同时支持 OCR、原文朗读、可替换桌面宠物、五套可切换主题和自定义快捷键。
 
 ## 下载
 
@@ -28,6 +28,7 @@ ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪�
 | 划词翻译 | 复制选中的文本后自动在光标附近显示翻译窗口。 |
 | 可靠的请求反馈 | AI 流式输出、慢响应自动重试、空响应检测和可读的错误提示，Google 结果不会被 AI 超时阻塞。 |
 | 语音朗读 | 默认使用 Edge TTS 和 Pygame；也可配置小米 MiMo TTS，或安装可选的 Piper/MPV 本地组件。 |
+| 桌面宠物 | 狸花猫会跟随识图、翻译、完成、失败和朗读状态行动，并用紧凑气泡显示主要译文。宠物采用独立资源包，可替换和扩展。 |
 | 桌面体验 | 系统托盘、五套主题、可配置全局快捷键、结果复制和紧凑的 OCR 等待状态。 |
 
 ## 使用
@@ -41,6 +42,8 @@ ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪�
 | 划词翻译 | 选中文字后快速复制两次 |
 | 手动翻译 | 输入文字后按 `Enter`，`Shift + Enter` 用于换行 |
 | 打开设置或退出 | 右键系统托盘图标 |
+| 打开完整翻译结果 | 双击桌面宠物 |
+| 移动或管理宠物 | 左键拖动；右键打开宠物菜单 |
 
 快捷键可以在“通用设置”中修改。若本机已有软件占用默认组合键，请更换后重试。
 
@@ -53,6 +56,12 @@ ManboShot 是一款常驻系统托盘的 Windows 翻译助手。它可以从剪�
 - `Model`
 
 这些配置保存在本机 `%APPDATA%\MaoboShot\config.json`，不会写入项目目录。留空 API Key 时，AI 翻译卡片会自动隐藏，Google 翻译仍可正常使用。
+
+### 桌面宠物
+
+在“设置 → 桌面宠物”中可以开关宠物、选择角色、将大小调整为 `70%–140%`，以及控制结果气泡。宠物位置会按 Windows 全局逻辑坐标保存，支持多显示器与负坐标副屏。右键宠物可以触发逐帧舔爪、眨眼或跳跃；舔爪动作包含抬爪、两次舔舐、收爪和返回待机共 8 帧。
+
+内置宠物位于 `assets/pets`，用户宠物可安装到 `%APPDATA%\MaoboShot\pets`。每个角色都是一个包含 `pet.json` 与角色图片的独立目录；完整格式见[桌面宠物系统说明](docs/pet-system.md)。
 
 ## 从源码运行
 
@@ -107,6 +116,7 @@ dist/
 
 - [版本记录](CHANGELOG.md)
 - [维护与发布说明](docs/maintenance.md)
+- [桌面宠物系统](docs/pet-system.md)
 
 ## License
 
