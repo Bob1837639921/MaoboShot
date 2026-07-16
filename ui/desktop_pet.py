@@ -625,6 +625,7 @@ class DesktopPetWindow(QWidget):
         if self._enabled:
             self.show()
         else:
+            self.hide_bubble()
             self.hide()
         self.visibility_changed.emit(self._enabled)
         self._schedule_idle_action()
@@ -823,6 +824,10 @@ class DesktopPetWindow(QWidget):
         config = load_app_config()
         config["PET_ENABLED"] = False
         save_app_config(config)
+        self._enabled = False
+        self._idle_action_timer.stop()
+        self.sprite.stop_action()
+        self.hide_bubble()
         self.hide()
         self.visibility_changed.emit(False)
 
@@ -887,6 +892,9 @@ class DesktopPetWindow(QWidget):
         self._source_text = source_text.strip()
         self._result_text = ""
         self._translation_bubble_allowed = bool(show_bubble)
+        if not self._enabled:
+            self.hide_bubble()
+            return
         self.set_state("translating")
         if self._bubble_enabled and self._translation_bubble_allowed:
             self.bubble_title.setText("ManboShot · 正在翻译")
@@ -946,7 +954,7 @@ class DesktopPetWindow(QWidget):
             self.show_bubble(timeout_ms=10000)
 
     def show_bubble(self, timeout_ms=14000):
-        if not self._bubble_enabled:
+        if not self.can_show_bubble:
             return
         self.bubble.show()
         self._reanchor()
