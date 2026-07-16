@@ -488,6 +488,7 @@ class DesktopPetWindow(QWidget):
         self._last_drag_cursor = QPoint()
         self._dragging = False
         self._drag_active = False
+        self._drag_direction = None
         self._state_action = None
         self._translation_bubble_allowed = True
         self._sprite_align_right = True
@@ -748,6 +749,7 @@ class DesktopPetWindow(QWidget):
         self._drag_window_origin = self.pos()
         self._dragging = True
         self._drag_active = False
+        self._drag_direction = None
         self._idle_action_timer.stop()
 
     def _drag_to(self, cursor_pos: QPoint):
@@ -756,9 +758,12 @@ class DesktopPetWindow(QWidget):
             self._drag_active = True
         if self._drag_active:
             horizontal_delta = cursor_pos.x() - self._last_drag_cursor.x()
-            action = "running-right" if horizontal_delta >= 0 else "running-left"
-            if abs(horizontal_delta) >= 1 and self.sprite.has_action(action):
-                self.sprite.play_action(action)
+            if abs(horizontal_delta) >= 2:
+                self._drag_direction = (
+                    "running-right" if horizontal_delta > 0 else "running-left"
+                )
+            if self._drag_direction and self.sprite.has_action(self._drag_direction):
+                self.sprite.play_action(self._drag_direction)
         self._last_drag_cursor = cursor_pos
         self.move(self._drag_window_origin + delta)
         sprite_offset_x = self.width() - self.sprite.width() if self._sprite_align_right else 0
@@ -771,6 +776,7 @@ class DesktopPetWindow(QWidget):
         was_active = self._drag_active
         self._dragging = False
         self._drag_active = False
+        self._drag_direction = None
         if was_active:
             self.sprite.stop_action()
             self._apply_state_action()
@@ -788,6 +794,9 @@ class DesktopPetWindow(QWidget):
         lick_paw_action = QAction("舔舔爪子", menu)
         lick_paw_action.setEnabled(self.sprite.has_action("lick_paw"))
         lick_paw_action.triggered.connect(lambda: self.sprite.play_action("lick_paw"))
+        wave_action = QAction("打个招呼", menu)
+        wave_action.setEnabled(self.sprite.has_action("wave"))
+        wave_action.triggered.connect(lambda: self.sprite.play_action("wave"))
         blink_action = QAction("眨眨眼", menu)
         blink_action.triggered.connect(lambda: self.sprite.play_action("blink"))
         jump_action = QAction("蹦一下", menu)
@@ -801,6 +810,7 @@ class DesktopPetWindow(QWidget):
         hide_action.triggered.connect(self.disable_pet)
         menu.addAction(open_action)
         menu.addAction(lick_paw_action)
+        menu.addAction(wave_action)
         menu.addAction(blink_action)
         menu.addAction(jump_action)
         menu.addAction(hide_bubble_action)
@@ -819,7 +829,7 @@ class DesktopPetWindow(QWidget):
     def _schedule_idle_action(self):
         self._idle_action_timer.stop()
         if self._enabled:
-            self._idle_action_timer.start(random.randint(12000, 28000))
+            self._idle_action_timer.start(random.randint(14000, 30000))
 
     def _play_idle_action(self):
         if (
@@ -827,10 +837,21 @@ class DesktopPetWindow(QWidget):
             and self.isVisible()
             and self._state == "idle"
             and not self._dragging
+            and not self.bubble.isVisible()
             and not self.sprite.current_action
-            and self.sprite.has_action("lick_paw")
         ):
-            self.sprite.play_action("lick_paw")
+            has_lick = self.sprite.has_action("lick_paw")
+            has_wave = self.sprite.has_action("wave")
+            if has_lick and has_wave:
+                action = "lick_paw" if random.random() < 0.75 else "wave"
+            elif has_lick:
+                action = "lick_paw"
+            elif has_wave:
+                action = "wave"
+            else:
+                action = None
+            if action:
+                self.sprite.play_action(action)
         self._schedule_idle_action()
 
     def _apply_state_action(self):

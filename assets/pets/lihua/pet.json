@@ -63,7 +63,7 @@
         "animations/running/frames/04.png",
         "animations/running/frames/05.png"
       ],
-      "durations_ms": [130, 130, 130, 130, 130, 150],
+      "durations_ms": [190, 210, 220, 260, 190, 260],
       "reference_height": 198,
       "baseline": 203,
       "idle_frame_indices": [],
@@ -95,7 +95,7 @@
         "animations/running-right/frames/06.png",
         "animations/running-right/frames/07.png"
       ],
-      "durations_ms": [95, 95, 95, 95, 95, 95, 95, 110],
+      "durations_ms": [130, 130, 130, 130, 130, 130, 130, 150],
       "reference_height": 198,
       "baseline": 203,
       "idle_frame_indices": [],
@@ -112,11 +112,24 @@
         "animations/running-left/frames/06.png",
         "animations/running-left/frames/07.png"
       ],
-      "durations_ms": [95, 95, 95, 95, 95, 95, 95, 110],
+      "durations_ms": [130, 130, 130, 130, 130, 130, 130, 150],
       "reference_height": 198,
       "baseline": 203,
       "idle_frame_indices": [],
       "loop": true
+    },
+    "wave": {
+      "frames": [
+        "animations/wave/frames/00.png",
+        "animations/wave/frames/01.png",
+        "animations/wave/frames/02.png",
+        "animations/wave/frames/03.png"
+      ],
+      "durations_ms": [220, 180, 220, 320],
+      "reference_height": 198,
+      "baseline": 203,
+      "idle_frame_indices": [],
+      "loop": false
     }
   },
   "identity_anchors": [
