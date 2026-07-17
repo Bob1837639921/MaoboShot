@@ -66,6 +66,7 @@ mpv/
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall -q core ui utils main.py build_exe.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 git diff --check
 ```
 
@@ -76,6 +77,7 @@ git diff --check
 - 五套可切换主题（经典深色、经典浅色、暗夜地形、冰霜蓝图、信号甲板）
 - 不同窗口宽度和多显示器缩放
 - 全局快捷键与托盘退出
+- 宠物拖动左右走路、闲置彩蛋、业务状态动作和禁用后保持隐藏
 
 ## 构建
 
@@ -94,7 +96,7 @@ dist/ManboShot/
 ## Release 检查清单
 
 1. 确认工作区干净，目标提交已推送到 `main`。
-2. 完成编译检查与核心交互验证。
+2. 完成编译检查、自动测试与核心交互验证。
 3. 重新构建 `dist/ManboShot`，不要复用旧成品。
 4. 检查构建目录中不存在 `.env`、`config.json`、日志或真实密钥。
 5. 将完整目录压缩为 `ManboShot-windows-x64-vX.Y.Z.zip`。
