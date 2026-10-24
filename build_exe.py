@@ -55,11 +55,41 @@ PRUNABLE_INTERNAL_PATHS = (
     "PySide6/Qt6QmlWorkerScript.dll",
     "PySide6/Qt6Pdf.dll",
     "PySide6/Qt6OpenGL.dll",
+    "PySide6/Qt6Svg.dll",
     "PySide6/Qt6VirtualKeyboard.dll",
     "PySide6/translations",
     "PySide6/plugins/platforminputcontexts",
     "eng_to_ipa/resources/CMU_dict.json",
     "eng_to_ipa/resources/CMU_source_files",
+    "assets/pets/lihua/animations/lick-paw/lick-paw-strip-v1.png",
+    "assets/pets/lihua/animations/lick-paw/prompt.md",
+    "SDL2_ttf.dll",
+    "pygame/SDL2_ttf.dll",
+    "pygame/SDL2_image.dll",
+    "pygame/freetype.dll",
+    "pygame/freesansbold.ttf",
+    "pygame/libjpeg-9.dll",
+    "pygame/libpng16-16.dll",
+    "pygame/libwebp-7.dll",
+    "pygame/libtiff-5.dll",
+)
+
+PRUNABLE_INTERNAL_GLOBS = (
+    "cv2/opencv_videoio_ffmpeg*.dll",
+    "PIL/_avif*.pyd",
+    "PIL/_imagingft*.pyd",
+    "PIL/_imagingtk*.pyd",
+    "PIL/_imagingcms*.pyd",
+    "PIL/_webp*.pyd",
+    "pygame/font*.pyd",
+    "pygame/_freetype*.pyd",
+    "pygame/image*.pyd",
+    "pygame/draw*.pyd",
+    "pygame/transform*.pyd",
+    "pygame/mask*.pyd",
+    "pygame/pixelcopy*.pyd",
+    "pygame/pixelarray*.pyd",
+    "pygame/joystick*.pyd",
 )
 
 
@@ -144,11 +174,9 @@ def prune_bundle(bundle_dir: Path) -> int:
     for rel in PRUNABLE_INTERNAL_PATHS:
         _remove_path(internal_dir / rel)
 
-    # OpenCV 仅用于图像矩阵处理，不需要 28MB 的 FFmpeg 视频编解码动态库
-    cv2_dir = internal_dir / "cv2"
-    if cv2_dir.exists():
-        for ffmpeg_dll in cv2_dir.glob("opencv_videoio_ffmpeg*.dll"):
-            _remove_path(ffmpeg_dll)
+    for pattern in PRUNABLE_INTERNAL_GLOBS:
+        for matched in internal_dir.glob(pattern):
+            _remove_path(matched)
 
     return removed_bytes
 

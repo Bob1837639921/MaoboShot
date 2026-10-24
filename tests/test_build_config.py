@@ -4,6 +4,7 @@ from pathlib import Path
 
 from build_exe import (
     EXCLUDED_MODULES,
+    PRUNABLE_INTERNAL_GLOBS,
     build_pyinstaller_args,
     prune_bundle,
 )
@@ -54,19 +55,27 @@ class BuildConfigTests(unittest.TestCase):
             (ipa_res / "CMU_dict.json").write_bytes(b"j" * 256)
             (ipa_res / "CMU_dict.db").write_bytes(b"d" * 64)
 
+            pil_dir = internal / "PIL"
+            pil_dir.mkdir(parents=True)
+            (pil_dir / "_avif.cp310-win_amd64.pyd").write_bytes(b"a" * 128)
+            (pil_dir / "_imaging.cp310-win_amd64.pyd").write_bytes(b"i" * 64)
+
             freed = prune_bundle(bundle)
 
-            self.assertEqual(freed, 128 + 256 + 256 + 512 + 256)
+            self.assertEqual(freed, 128 + 256 + 256 + 512 + 256 + 128)
+            self.assertIn("PIL/_avif*.pyd", PRUNABLE_INTERNAL_GLOBS)
             self.assertFalse((qt_dir / "opengl32sw.dll").exists())
             self.assertFalse((qt_dir / "Qt6Quick.dll").exists())
             self.assertFalse((qt_dir / "translations").exists())
             self.assertFalse((cv2_dir / "opencv_videoio_ffmpeg4130_64.dll").exists())
             self.assertFalse((ipa_res / "CMU_dict.json").exists())
+            self.assertFalse((pil_dir / "_avif.cp310-win_amd64.pyd").exists())
 
             # Required runtime files remain intact
             self.assertTrue((qt_dir / "Qt6Core.dll").exists())
             self.assertTrue((cv2_dir / "cv2.pyd").exists())
             self.assertTrue((ipa_res / "CMU_dict.db").exists())
+            self.assertTrue((pil_dir / "_imaging.cp310-win_amd64.pyd").exists())
 
     def test_requirements_separate_runtime_and_dev_dependencies(self):
         project_root = Path(__file__).resolve().parent.parent
