@@ -9,6 +9,7 @@ from ui.main_window import FloatingWindow
 from ui.selection_handler import (
     build_highlight_candidates,
     highlight_html_with_candidates,
+    infer_aligned_target_span,
 )
 from ui.snipping_widget import SnippingWidget
 from utils.win_api import parse_hotkey_string
@@ -191,6 +192,24 @@ class SelectionHighlightMatchingTests(unittest.TestCase):
         )
         self.assertNotIn("Pillow", candidates)
         self.assertNotIn("pygame", candidates)
+
+    def test_infer_aligned_target_span_matches_ai_wording_via_context_anchors(self):
+        google_text = "修剪未使用的 Pillow、pygame 和源精灵工件"
+        ai_text = "清理未使用的 Pillow、pygame 和源精灵素材文件"
+
+        # Case 1: "prune" -> Google has "修剪" at start before "未使用的", AI has "清理"
+        span_prune = infer_aligned_target_span("prune", ["修剪"], google_text, ai_text)
+        self.assertEqual(span_prune, "清理")
+
+        # Case 2: "source sprite artifacts" -> Google has "源精灵工件" after "和" to end,
+        # AI has "源精灵素材文件"
+        span_phrase = infer_aligned_target_span(
+            "source sprite artifacts",
+            ["源精灵工件"],
+            google_text,
+            ai_text,
+        )
+        self.assertEqual(span_phrase, "源精灵素材文件")
 
 
 if __name__ == "__main__":
