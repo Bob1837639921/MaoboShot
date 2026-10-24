@@ -6,6 +6,10 @@ from core.translator import (
     normalize_google_source_text,
 )
 from ui.main_window import FloatingWindow
+from ui.selection_handler import (
+    build_highlight_candidates,
+    highlight_html_with_candidates,
+)
 from ui.snipping_widget import SnippingWidget
 from utils.win_api import parse_hotkey_string
 
@@ -119,6 +123,53 @@ class SpeechTargetResolutionTests(unittest.TestCase):
         self.assertEqual(win.current_text_for_speech, "extraordinary")
         win.play_btn.setText.assert_called_once_with("朗读原文")
         win.play_btn.setEnabled.assert_called_once_with(True)
+
+
+class SelectionHighlightMatchingTests(unittest.TestCase):
+    def test_highlights_untranslated_proper_noun_like_pillow_in_both_cards(self):
+        candidates = build_highlight_candidates("Pillow", ("枕头",))
+        ai_html = "<div>清理未使用的 Pillow、pygame 和源精灵图产物</div>"
+        gg_html = "<div>修剪未使用的 Pillow、pygame 和源精灵工件</div>"
+
+        ai_out, ai_hit = highlight_html_with_candidates(ai_html, candidates, "hl")
+        gg_out, gg_hit = highlight_html_with_candidates(gg_html, candidates, "hl")
+
+        self.assertTrue(ai_hit)
+        self.assertTrue(gg_hit)
+        self.assertIn('<span style="hl">Pillow</span>', ai_out)
+        self.assertIn('<span style="hl">Pillow</span>', gg_out)
+
+    def test_highlights_dictionary_synonym_when_ai_and_google_wording_differ(self):
+        # Google primary is "修剪", dictionary synonym includes "清理"
+        candidates = build_highlight_candidates("prune", ("修剪", "清理", "精简"))
+        ai_html = "<div>清理未使用的 Pillow、pygame 和源精灵图产物</div>"
+        gg_html = "<div>修剪未使用的 Pillow、pygame 和源精灵工件</div>"
+
+        ai_out, ai_hit = highlight_html_with_candidates(ai_html, candidates, "hl")
+        gg_out, gg_hit = highlight_html_with_candidates(gg_html, candidates, "hl")
+
+        self.assertTrue(ai_hit)
+        self.assertTrue(gg_hit)
+        self.assertIn('<span style="hl">清理</span>', ai_out)
+        self.assertIn('<span style="hl">修剪</span>', gg_out)
+
+    def test_highlights_phrase_prefix_when_compound_noun_differs_in_ai_translation(self):
+        # Google translates "source sprite artifacts" -> "源精灵工件",
+        # while AI translates it as "源精灵图产物".
+        candidates = build_highlight_candidates(
+            "source sprite artifacts",
+            ("源精灵工件", "源精灵伪影"),
+        )
+        ai_html = "<div>清理未使用的 Pillow、pygame 和源精灵图产物</div>"
+        gg_html = "<div>修剪未使用的 Pillow、pygame 和源精灵工件</div>"
+
+        ai_out, ai_hit = highlight_html_with_candidates(ai_html, candidates, "hl")
+        gg_out, gg_hit = highlight_html_with_candidates(gg_html, candidates, "hl")
+
+        self.assertTrue(ai_hit)
+        self.assertTrue(gg_hit)
+        self.assertIn('<span style="hl">源精灵</span>图产物', ai_out)
+        self.assertIn('<span style="hl">源精灵工件</span>', gg_out)
 
 
 if __name__ == "__main__":

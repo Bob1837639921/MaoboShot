@@ -176,6 +176,64 @@ def google_translate_text(text: str, target: str) -> str:
     logger.error(f"Google 翻译请求失败: {last_error}")
     raise RuntimeError("Google 翻译网络连接失败，请稍后重试")
 
+
+@lru_cache(maxsize=128)
+def google_translate_candidates(text: str, target: str) -> tuple[str, ...]:
+    """获取用于选词高亮的多路候选译文（主译文 + 备选短语 dt=at + 词典释义 dt=bd）。"""
+    source_text = normalize_google_source_text(text) if target == 'zh-CN' else text
+    candidates: list[str] = []
+
+    def _add(item):
+        if not isinstance(item, str):
+            return
+        cleaned = item.strip()
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+
+    try:
+        response = requests.get(
+            GOOGLE_TRANSLATE_API_URL,
+            params=[
+                ("client", "gtx"),
+                ("sl", "auto"),
+                ("tl", target),
+                ("dt", "t"),
+                ("dt", "at"),
+                ("dt", "bd"),
+                ("q", source_text),
+            ],
+            headers=GOOGLE_TRANSLATE_HEADERS,
+            timeout=GOOGLE_TRANSLATE_TIMEOUT,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            if len(data) > 0 and data[0]:
+                primary = "".join(part[0] for part in data[0] if part and part[0])
+                _add(primary)
+            if len(data) > 5 and isinstance(data[5], list):
+                for seg in data[5]:
+                    if isinstance(seg, list) and len(seg) > 2 and isinstance(seg[2], list):
+                        for alt in seg[2][:8]:
+                            if isinstance(alt, list) and alt:
+                                _add(alt[0])
+            if len(data) > 1 and isinstance(data[1], list):
+                for pos_entry in data[1]:
+                    if isinstance(pos_entry, list) and len(pos_entry) > 1 and isinstance(pos_entry[1], list):
+                        for word in pos_entry[1][:8]:
+                            _add(word)
+    except Exception:
+        pass
+
+    if not candidates:
+        try:
+            _add(google_translate_text(text, target))
+        except Exception:
+            pass
+
+    return tuple(candidates)
+
+
 def choose_google_translation_args(text: str) -> tuple[str, str]:
     # 计算中文字符个数
     zh_count = len(re.findall(r'[\u4e00-\u9fff]', text))
