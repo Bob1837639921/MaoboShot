@@ -2,6 +2,8 @@ import os
 import sys
 import logging
 import json
+import tempfile
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
 import certifi
@@ -69,26 +71,79 @@ DEFAULT_CONFIG = {
     "PET_POSITION": {}
 }
 
+_config_lock = threading.Lock()
+_config_cache = None
+_config_cache_key = None
+
+
+def invalidate_config_cache():
+    """清空内存中的配置缓存，下次调用 load_app_config 时重新读取磁盘。"""
+    global _config_cache, _config_cache_key
+    with _config_lock:
+        _config_cache = None
+        _config_cache_key = None
+
+
 def load_app_config():
-    if CONFIG_FILE.exists():
-        try:
-            with open(CONFIG_FILE, 'r', encoding='utf-8-sig') as f:
-                data = json.load(f)
+    global _config_cache, _config_cache_key
+    with _config_lock:
+        if CONFIG_FILE.exists():
+            try:
+                stat = CONFIG_FILE.stat()
+                cache_key = (str(CONFIG_FILE), stat.st_mtime_ns, stat.st_size)
+                if _config_cache is not None and _config_cache_key == cache_key:
+                    return dict(_config_cache)
+                with open(CONFIG_FILE, 'r', encoding='utf-8-sig') as f:
+                    data = json.load(f)
+                merged = dict(DEFAULT_CONFIG)
+                merged.update(data)
+                _config_cache = merged
+                _config_cache_key = cache_key
+                return dict(merged)
+            except Exception as e:
+                logger.error(f"加载配置文件失败: {e}")
+        else:
+            cache_key = (str(CONFIG_FILE), None, None)
+            if _config_cache is not None and _config_cache_key == cache_key:
+                return dict(_config_cache)
             merged = dict(DEFAULT_CONFIG)
-            merged.update(data)
-            return merged
-        except Exception as e:
-            logger.error(f"加载配置文件失败: {e}")
+            _config_cache = merged
+            _config_cache_key = cache_key
+            return dict(merged)
     # 兼容环境变量作为初始回退
     return dict(DEFAULT_CONFIG)
 
+
 def save_app_config(data):
+    global _config_cache, _config_cache_key
+    tmp_path = None
     try:
-        USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        target_dir = CONFIG_FILE.parent
+        target_dir.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f"{CONFIG_FILE.stem}.",
+            suffix=".tmp",
+            dir=str(target_dir),
+        )
+        tmp_path = Path(tmp_name)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, CONFIG_FILE)
+        with _config_lock:
+            merged = dict(DEFAULT_CONFIG)
+            merged.update(data)
+            stat = CONFIG_FILE.stat()
+            _config_cache = merged
+            _config_cache_key = (str(CONFIG_FILE), stat.st_mtime_ns, stat.st_size)
     except Exception as e:
         logger.error(f"保存配置文件失败: {e}")
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
 
 HYBRID_THRESHOLD = 30  # 语音合成阈值
 

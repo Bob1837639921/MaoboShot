@@ -528,7 +528,10 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             
         self.google_result_lbl.setText(gg_html)
         self._base_google_html = gg_html
-        self.google_copy_btn.setEnabled(bool(results.get("google", "")) and not google_loading)
+        google_raw = (results.get("google", "") or "").strip()
+        self.google_copy_btn.setEnabled(
+            bool(google_raw) and not google_raw.startswith("❌") and not google_loading
+        )
         
         self.play_btn.show()
         

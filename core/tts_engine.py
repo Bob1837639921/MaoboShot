@@ -20,10 +20,32 @@ _active_processes = []
 _process_lock = threading.Lock()
 _pygame_lock = threading.Lock()
 
-def _add_process(p):
-    with _process_lock:
-        _active_processes.append(p)
+# 播放代次：每次开始朗读或主动打断都会递增，旧代次的朗读据此自行退出
+_playback_lock = threading.Lock()
+_playback_generation = 0
+_latest_worker_generation = 0
 
+def _begin_playback():
+    global _playback_generation, _latest_worker_generation
+    with _playback_lock:
+        _playback_generation += 1
+        _latest_worker_generation = _playback_generation
+        return _playback_generation
+
+def _is_current_playback(generation):
+    return generation == _playback_generation
+
+def _make_status_sender(status_signal, generation):
+    """过期朗读不再更新界面；但被打断且没有新朗读接替时，仍需发出 reset 复位按钮。"""
+    def send_status(msg):
+        if not status_signal:
+            return
+        if msg == "reset":
+            if generation == _latest_worker_generation:
+                status_signal.emit(msg)
+        elif _is_current_playback(generation):
+            status_signal.emit(msg)
+    return send_status
 
 def _add_process(p):
     with _process_lock:
@@ -45,13 +67,18 @@ def cleanup_tts_processes():
         _active_processes.clear()
 
 def stop_tts_playback():
-    """停止当前的语音合成与播放进程"""
+    """停止当前的语音合成与播放（mpv/Piper 子进程与 pygame 播放循环）"""
+    global _playback_generation
     logger.info("主动打断当前语音朗读进程")
+    with _playback_lock:
+        _playback_generation += 1
     cleanup_tts_processes()
 
-def _play_audio_file(audio_path):
+def _play_audio_file(audio_path, generation=None):
     """使用 pygame 播放本地音频文件，作为 mpv 不存在时的兜底方案。若 pygame 缺失则尝试用内置 winsound 播放 wav 文件。"""
     with _pygame_lock:
+        if generation is not None and not _is_current_playback(generation):
+            return
         try:
             import pygame
             pygame.mixer.init()
@@ -59,6 +86,9 @@ def _play_audio_file(audio_path):
                 pygame.mixer.music.load(audio_path)
                 pygame.mixer.music.play()
                 while pygame.mixer.music.get_busy():
+                    if generation is not None and not _is_current_playback(generation):
+                        pygame.mixer.music.stop()
+                        break
                     time.sleep(0.05)
                 pygame.mixer.music.unload()
             finally:
@@ -67,6 +97,8 @@ def _play_audio_file(audio_path):
             logger.warning(f"pygame 播放失败或未安装: {e}")
             # 如果是 wav 文件，尝试使用内置 winsound 播放 (零依赖)
             if str(audio_path).lower().endswith(".wav"):
+                if generation is not None and not _is_current_playback(generation):
+                    return
                 try:
                     import winsound
                     winsound.PlaySound(str(audio_path), winsound.SND_FILENAME)
@@ -109,7 +141,7 @@ def _find_audio_payload(data):
                 return found
     return None
 
-def _play_xiaomi_tts(text, config, send_status):
+def _play_xiaomi_tts(text, config, send_status, generation=None):
     api_key = config.get("XIAOMI_TTS_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("未配置小米 MiMo TTS API Key")
@@ -179,6 +211,8 @@ def _play_xiaomi_tts(text, config, send_status):
 
         with open(audio_path, "wb") as f:
             f.write(audio_bytes)
+        if generation is not None and not _is_current_playback(generation):
+            return
         send_status("▶️ 开始朗读...")
         player_engine = config.get("AUDIO_PLAYER", "pygame")
         if player_engine == "mpv" and MPV_EXE.exists():
@@ -196,7 +230,7 @@ def _play_xiaomi_tts(text, config, send_status):
             p_play.wait()
             _remove_process(p_play)
         else:
-            _play_audio_file(audio_path)
+            _play_audio_file(audio_path, generation)
     finally:
         try:
             if os.path.exists(audio_path):
@@ -212,9 +246,8 @@ def play_voice_worker(text, status_signal=None):
     if not text:
         return
 
-    def send_status(msg):
-        if status_signal:
-            status_signal.emit(msg)
+    generation = _begin_playback()
+    send_status = _make_status_sender(status_signal, generation)
 
     def preprocess_text_for_speech(t, add_prefix=False):
         if not t:
@@ -247,7 +280,7 @@ def play_voice_worker(text, status_signal=None):
         if use_cloud:
             send_status("☁️ 云端连接...")
             if ai_tts_provider == "xiaomi":
-                _play_xiaomi_tts(safe_text_for_speech, config, send_status)
+                _play_xiaomi_tts(safe_text_for_speech, config, send_status, generation)
                 return
 
             # 智能判断语言并选择最顶级的发音人
@@ -287,6 +320,8 @@ def play_voice_worker(text, status_signal=None):
 
                     try:
                         async for chunk in communicate.stream():
+                            if not _is_current_playback(generation):
+                                break
                             if chunk["type"] == "audio":
                                 if first_chunk:
                                     send_status("▶️ 开始朗读...")
@@ -304,8 +339,10 @@ def play_voice_worker(text, status_signal=None):
                     cloud_audio = os.path.join(tempfile.gettempdir(), f"maoboshot_edge_{uuid.uuid4().hex}.mp3")
                     try:
                         await communicate.save(cloud_audio)
+                        if not _is_current_playback(generation):
+                            return
                         send_status("▶️ 开始朗读...")
-                        _play_audio_file(cloud_audio)
+                        _play_audio_file(cloud_audio, generation)
                     finally:
                         try:
                             if os.path.exists(cloud_audio):
@@ -351,7 +388,10 @@ def play_voice_worker(text, status_signal=None):
                 
                 p_gen.communicate(input=safe_text.encode('utf-8'))
                 _remove_process(p_gen)
-                
+
+                if not _is_current_playback(generation):
+                    return
+
                 if os.path.exists(temp_wav):
                     cmd_play = [
                         str(MPV_EXE), 
@@ -372,7 +412,7 @@ def play_voice_worker(text, status_signal=None):
                         p_play.wait()
                         _remove_process(p_play)
                     else:
-                        _play_audio_file(temp_wav)
+                        _play_audio_file(temp_wav, generation)
             else:
                 logger.error("❌ 错误：找不到 Piper.exe")
 

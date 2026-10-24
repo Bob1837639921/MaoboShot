@@ -236,6 +236,8 @@ def safe_google_translate(text: str, source: str, target: str) -> str:
         
     # 3. 对各个组进行翻译
     translated_groups = []
+    translated_any = False
+    last_group_error = None
     for g in groups:
         if g["is_target"] or not g["text"].strip():
             # 已经是目标语言或者是空行，保留原文
@@ -244,11 +246,19 @@ def safe_google_translate(text: str, source: str, target: str) -> str:
             # 需要翻译的外语块（包含多个段落，仅进行 1 次网络请求）
             try:
                 translated = google_translate_text(g["text"], target)
-                translated_groups.append(translated if translated else g["text"])
+                if translated:
+                    translated_groups.append(translated)
+                    translated_any = True
+                else:
+                    translated_groups.append(g["text"])
             except Exception as e:
                 logger.error(f"分组翻译失败: {e}")
+                last_group_error = e
                 translated_groups.append(g["text"])
-                
+
+    if last_group_error is not None and not translated_any:
+        raise last_group_error
+
     return '\n'.join(translated_groups)
 
 class TranslatorWorker(QObject):

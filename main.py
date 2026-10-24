@@ -2,7 +2,11 @@ import sys
 import os
 from PySide6.QtWidgets import QApplication
 from core.config import logger, load_app_config
-from utils.win_api import elevate_privileges
+from utils.win_api import (
+    acquire_single_instance_mutex,
+    elevate_privileges,
+    release_single_instance_mutex,
+)
 from core.tts_engine import cleanup_tts_processes
 from core.ocr_engine import warmup_ocr_background
 from ui.main_window import FloatingWindow
@@ -13,14 +17,19 @@ def main():
         if getattr(sys, 'frozen', False) or "--admin" in sys.argv:
             elevate_privileges()
 
+    if not acquire_single_instance_mutex():
+        logger.warning("ManboShot 已在运行，忽略重复启动。")
+        return
+
     # 初始化应用
     app = QApplication(sys.argv)
-    
+
     # 提前在后台静默预加载OCR引擎 (提升截图秒开体验)
     warmup_ocr_background()
 
     # 注册退出时的子进程清理回调 (防止孤儿进程/僵尸进程泄露)
     app.aboutToQuit.connect(cleanup_tts_processes)
+    app.aboutToQuit.connect(release_single_instance_mutex)
 
     # 实例化并显示主窗口
     try:
