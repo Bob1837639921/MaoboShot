@@ -5,6 +5,7 @@ from core.translator import (
     choose_google_translation_args,
     normalize_google_source_text,
 )
+from ui.main_window import FloatingWindow
 from ui.snipping_widget import SnippingWidget
 from utils.win_api import parse_hotkey_string
 
@@ -77,6 +78,47 @@ class ParseHotkeyStringTests(unittest.TestCase):
     def test_returns_zero_tuple_for_empty_string(self):
         self.assertEqual(parse_hotkey_string(""), (0, 0))
         self.assertEqual(parse_hotkey_string(None), (0, 0))
+
+
+class SpeechTargetResolutionTests(unittest.TestCase):
+    @staticmethod
+    def _make_window(full_text: str, selected_text: str = ""):
+        from unittest.mock import Mock
+
+        cursor = SimpleNamespace(selectedText=lambda: selected_text)
+        input_edit = SimpleNamespace(
+            textCursor=lambda: cursor,
+            toPlainText=lambda: full_text,
+        )
+        win = SimpleNamespace(
+            input_edit=input_edit,
+            play_btn=Mock(),
+            current_text_for_speech="stale sentence",
+            is_playing_tts=False,
+        )
+        win._resolve_speech_text = lambda: FloatingWindow._resolve_speech_text(win)
+        win._idle_play_btn_label = lambda: FloatingWindow._idle_play_btn_label(win)
+        return win
+
+    def test_prefers_selected_word_over_full_input_and_updates_button_label(self):
+        win = self._make_window("This is an extraordinary example.", "extraordinary")
+        text, is_selection = FloatingWindow._resolve_speech_text(win)
+        self.assertEqual((text, is_selection), ("extraordinary", True))
+
+        FloatingWindow._sync_speech_controls(win)
+        self.assertEqual(win.current_text_for_speech, "extraordinary")
+        win.play_btn.setText.assert_called_once_with("朗读选中 · extraordinary")
+        win.play_btn.setEnabled.assert_called_once_with(True)
+
+    def test_uses_edited_input_text_immediately_without_retranslating(self):
+        win = self._make_window("extraordinary", "")
+        text, is_selection = FloatingWindow._resolve_speech_text(win)
+        self.assertEqual((text, is_selection), ("extraordinary", False))
+
+        FloatingWindow._sync_speech_controls(win)
+        self.assertEqual(win.current_text_for_speech, "extraordinary")
+        win.play_btn.setText.assert_called_once_with("朗读原文")
+        win.play_btn.setEnabled.assert_called_once_with(True)
 
 
 if __name__ == "__main__":
