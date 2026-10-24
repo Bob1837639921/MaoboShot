@@ -171,6 +171,27 @@ class SelectionHighlightMatchingTests(unittest.TestCase):
         self.assertIn('<span style="hl">源精灵</span>图产物', ai_out)
         self.assertIn('<span style="hl">源精灵工件</span>', gg_out)
 
+    def test_single_word_conjunction_like_and_highlights_single_cjk_char(self):
+        candidates = build_highlight_candidates("and", ("和", "与"))
+        ai_html = "<div>清理未使用的 Pillow、pygame 和源精灵图产物</div>"
+        gg_html = "<div>修剪未使用的 Pillow、pygame 和源精灵工件</div>"
+
+        ai_out, ai_hit = highlight_html_with_candidates(ai_html, candidates, "hl")
+        gg_out, gg_hit = highlight_html_with_candidates(gg_html, candidates, "hl")
+
+        self.assertTrue(ai_hit)
+        self.assertTrue(gg_hit)
+        self.assertIn('<span style="hl">和</span>', ai_out)
+        self.assertIn('<span style="hl">和</span>', gg_out)
+
+    def test_multi_word_selection_does_not_leak_individual_english_tokens_into_candidates(self):
+        candidates = build_highlight_candidates(
+            "prune unused Pillow, pygame, and source sprite artifacts",
+            ("修剪未使用的 Pillow、pygame 和源精灵工件",),
+        )
+        self.assertNotIn("Pillow", candidates)
+        self.assertNotIn("pygame", candidates)
+
 
 if __name__ == "__main__":
     unittest.main()
