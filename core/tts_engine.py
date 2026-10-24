@@ -350,7 +350,15 @@ def play_voice_worker(text, status_signal=None):
                         except Exception:
                             pass
 
-            asyncio.run(stream_edge())
+            try:
+                asyncio.run(stream_edge())
+            except Exception as edge_err:
+                xiaomi_key = config.get("XIAOMI_TTS_API_KEY", "").strip()
+                if xiaomi_key:
+                    logger.warning(f"Edge TTS 失败 ({edge_err})，自动回退至小米 MiMo TTS")
+                    _play_xiaomi_tts(safe_text_for_speech, config, send_status, generation)
+                else:
+                    raise
 
         else:
             send_status("⚡ 播放中...")
