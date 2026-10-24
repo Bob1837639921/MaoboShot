@@ -200,6 +200,48 @@ def _extract_sprite(path: Path, processing: dict, rig: dict = None) -> SpriteArt
     )
 
 
+def _scale_pixmap(pixmap: QPixmap, ratio: float) -> QPixmap:
+    if pixmap.isNull():
+        return pixmap
+    if abs(ratio - 1.0) < 1e-4:
+        return pixmap
+    width = max(1, round(pixmap.width() * ratio))
+    height = max(1, round(pixmap.height() * ratio))
+    return pixmap.scaled(
+        width,
+        height,
+        Qt.IgnoreAspectRatio,
+        Qt.SmoothTransformation,
+    )
+
+
+def _scale_sprite_art(art: SpriteArt, target_height: int) -> SpriteArt:
+    if art.isNull() or art.height <= 0 or target_height <= 0:
+        return art
+    ratio = target_height / art.height
+    return SpriteArt(
+        base=_scale_pixmap(art.base, ratio),
+        back_layers={k: _scale_pixmap(v, ratio) for k, v in art.back_layers.items()},
+        front_layers={k: _scale_pixmap(v, ratio) for k, v in art.front_layers.items()},
+        pivots={k: (pt[0] * ratio, pt[1] * ratio) for k, pt in art.pivots.items()},
+        blink=_scale_pixmap(art.blink, ratio),
+    )
+
+
+def _scale_frame_animations(animations: dict, user_scale: float, base_art_height: int) -> dict:
+    scaled = {}
+    for name, anim in animations.items():
+        ref_height = max(1, int(anim.get("reference_height", base_art_height)))
+        ratio = (base_art_height * user_scale) / ref_height
+        frames = [_scale_pixmap(frame, ratio) for frame in anim.get("frames", [])]
+        entry = dict(anim)
+        entry["frames"] = frames
+        entry["reference_height"] = base_art_height * user_scale
+        entry["baseline"] = float(anim.get("baseline", ref_height)) * ratio
+        scaled[name] = entry
+    return scaled
+
+
 class PetSprite(QWidget):
     BASE_WIDTH = 196
     BASE_HEIGHT = 212
@@ -215,6 +257,7 @@ class PetSprite(QWidget):
         super().__init__(parent)
         self.setFixedSize(self.BASE_WIDTH, self.BASE_HEIGHT)
         self.setCursor(Qt.OpenHandCursor)
+        self._source_art = SpriteArt()
         self._art = SpriteArt()
         self._state = "idle"
         self._motion = {}
@@ -222,28 +265,63 @@ class PetSprite(QWidget):
         self._user_scale = 1.0
         self._action = None
         self._action_phase = 0
+        self._source_frame_animations = {}
         self._frame_animations = {}
         self._frame_index = 0
         self._drag_origin = None
+        self._paused = False
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._advance)
         self._timer.start(90)
 
+    def _rebuild_scaled_assets(self):
+        target_height = max(1, round(self.BASE_ART_HEIGHT * self._user_scale))
+        self._art = _scale_sprite_art(self._source_art, target_height)
+        self._frame_animations = _scale_frame_animations(
+            self._source_frame_animations,
+            self._user_scale,
+            self.BASE_ART_HEIGHT,
+        )
+
+    def pause_animation(self):
+        self._paused = True
+        self._timer.stop()
+
+    def resume_animation(self):
+        self._paused = False
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._paused and not self._timer.isActive():
+            self._timer.start()
+
+    def hideEvent(self, event):
+        self._timer.stop()
+        super().hideEvent(event)
+
     def set_pet(self, art: SpriteArt, motion: dict):
-        self._art = art
+        self._source_art = art
         self._motion = motion
         self._phase = 0
+        self._rebuild_scaled_assets()
         self.update()
 
     def set_frame_animations(self, animations: dict):
-        self._frame_animations = animations
-        if self._action and self._action not in animations and self._action not in {
+        self._source_frame_animations = animations
+        self._frame_animations = _scale_frame_animations(
+            self._source_frame_animations,
+            self._user_scale,
+            self.BASE_ART_HEIGHT,
+        )
+        if self._action and self._action not in self._frame_animations and self._action not in {
             "greet",
             "jump",
             "blink",
         }:
             self._finish_action()
-        elif self._action not in animations:
+        elif self._action not in self._frame_animations:
             self._frame_index = 0
 
     def has_action(self, action: str) -> bool:
@@ -261,16 +339,20 @@ class PetSprite(QWidget):
         self._motion = motion
         self._phase = 0
         self._timer.setInterval(max(35, int(motion.get("interval_ms", 90))))
-        if not self._timer.isActive():
+        if not self._paused and self.isVisible() and not self._timer.isActive():
             self._timer.start()
         self.update()
 
     def set_user_scale(self, percent: int):
-        self._user_scale = max(0.7, min(1.4, percent / 100.0))
+        new_scale = max(0.7, min(1.4, percent / 100.0))
+        scale_changed = abs(new_scale - self._user_scale) > 1e-4
+        self._user_scale = new_scale
         self.setFixedSize(
             round(self.BASE_WIDTH * self._user_scale),
             round(self.BASE_HEIGHT * self._user_scale),
         )
+        if scale_changed and (not self._source_art.isNull() or self._source_frame_animations):
+            self._rebuild_scaled_assets()
         self.updateGeometry()
         self.update()
 
@@ -286,7 +368,7 @@ class PetSprite(QWidget):
             self._timer.setInterval(self._frame_animations[action]["durations_ms"][0])
         else:
             self._timer.setInterval(45)
-        if not self._timer.isActive():
+        if not self._paused and self.isVisible() and not self._timer.isActive():
             self._timer.start()
         self.update()
 
@@ -623,8 +705,10 @@ class DesktopPetWindow(QWidget):
         self._reanchor()
 
         if self._enabled:
+            self.sprite.resume_animation()
             self.show()
         else:
+            self.sprite.pause_animation()
             self.hide_bubble()
             self.hide()
         self.visibility_changed.emit(self._enabled)
@@ -827,6 +911,7 @@ class DesktopPetWindow(QWidget):
         self._enabled = False
         self._idle_action_timer.stop()
         self.sprite.stop_action()
+        self.sprite.pause_animation()
         self.hide_bubble()
         self.hide()
         self.visibility_changed.emit(False)

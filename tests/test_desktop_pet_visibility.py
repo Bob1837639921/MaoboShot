@@ -51,6 +51,7 @@ class DesktopPetVisibilityTests(unittest.TestCase):
         save_config.assert_called_once_with({"PET_ENABLED": False})
         pet._idle_action_timer.stop.assert_called_once_with()
         pet.sprite.stop_action.assert_called_once_with()
+        pet.sprite.pause_animation.assert_called_once_with()
         pet.hide_bubble.assert_called_once_with()
         pet.hide.assert_called_once_with()
         pet.visibility_changed.emit.assert_called_once_with(False)

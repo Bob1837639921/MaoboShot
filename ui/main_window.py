@@ -63,6 +63,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         from ui.selection_handler import SelectionTranslationHelper
         self.selection_helper = SelectionTranslationHelper(self)
         self.input_edit.selectionChanged.connect(self.selection_helper.handle_selection_changed)
+        self.input_edit.selectionChanged.connect(self._sync_speech_controls)
+        self.input_edit.textChanged.connect(self._sync_speech_controls)
 
     def eventFilter(self, obj, event):
         if obj == self.input_edit and event.type() == QEvent.Type.KeyPress:
@@ -528,7 +530,10 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             
         self.google_result_lbl.setText(gg_html)
         self._base_google_html = gg_html
-        self.google_copy_btn.setEnabled(bool(results.get("google", "")) and not google_loading)
+        google_raw = (results.get("google", "") or "").strip()
+        self.google_copy_btn.setEnabled(
+            bool(google_raw) and not google_raw.startswith("❌") and not google_loading
+        )
         
         self.play_btn.show()
         
@@ -603,10 +608,43 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         if new_x != current_x or new_y != current_y:
             self.move(new_x, new_y)
 
+    def _resolve_speech_text(self) -> tuple[str, bool]:
+        """返回 (待朗读文本, 是否来自鼠标框选)。优先取输入框选中文本，其次取输入框当前全文。"""
+        if hasattr(self, "input_edit") and self.input_edit is not None:
+            cursor = self.input_edit.textCursor()
+            selected = cursor.selectedText().replace(" ", "\n").strip()
+            if selected:
+                return selected, True
+            live_text = self.input_edit.toPlainText().strip()
+            if live_text:
+                return live_text, False
+        fallback = (getattr(self, "current_text_for_speech", "") or "").strip()
+        return fallback, False
+
+    def _idle_play_btn_label(self) -> str:
+        speech_text, is_selection = self._resolve_speech_text()
+        if is_selection:
+            preview = " ".join(speech_text.split())
+            if len(preview) > 14:
+                preview = preview[:13] + "…"
+            return f"朗读选中 · {preview}" if preview else "朗读选中"
+        return "朗读原文"
+
+    def _sync_speech_controls(self):
+        speech_text, _ = self._resolve_speech_text()
+        if speech_text:
+            self.current_text_for_speech = speech_text
+        if not hasattr(self, "play_btn") or self.play_btn is None:
+            return
+        if not getattr(self, "is_playing_tts", False):
+            self.play_btn.setText(self._idle_play_btn_label())
+            self.play_btn.setEnabled(bool(speech_text))
+
     def update_play_btn_status(self, text):
         if text == "reset":
-            self.play_btn.setText("朗读原文")
-            self.play_btn.setEnabled(True)
+            speech_text, _ = self._resolve_speech_text()
+            self.play_btn.setText(self._idle_play_btn_label())
+            self.play_btn.setEnabled(bool(speech_text))
             self.is_playing_tts = False
             if hasattr(self, "pet"):
                 self.pet.set_state("idle")
@@ -622,11 +660,18 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             stop_tts_playback()
             return
 
-        if not self.current_text_for_speech: return
+        speech_text, _ = self._resolve_speech_text()
+        if not speech_text:
+            return
+        self.current_text_for_speech = speech_text
         self.play_btn.setEnabled(False)
         self.is_playing_tts = True
         import threading
-        threading.Thread(target=play_voice_worker, args=(self.current_text_for_speech, self.tts_status_signal), daemon=True).start()
+        threading.Thread(
+            target=play_voice_worker,
+            args=(speech_text, self.tts_status_signal),
+            daemon=True,
+        ).start()
 
     def _safe_get_clipboard(self):
         try:

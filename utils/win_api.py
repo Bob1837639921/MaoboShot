@@ -15,9 +15,35 @@ VK_E = 0x45
 HOTKEY_ID_SHOW = 1
 HOTKEY_ID_SNIP = 2
 
+ERROR_ALREADY_EXISTS = 183
+SINGLE_INSTANCE_MUTEX_NAME = "Local\\ManboShot_SingleInstance_Mutex"
+
 # 🛠️ Windows 底层工具箱
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
+_instance_mutex_handle = None
+
+
+def acquire_single_instance_mutex(mutex_name: str = SINGLE_INSTANCE_MUTEX_NAME) -> bool:
+    """获取单实例互斥体；若已有实例运行则返回 False。"""
+    global _instance_mutex_handle
+    handle = kernel32.CreateMutexW(None, False, mutex_name)
+    if not handle:
+        return True
+    if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        kernel32.CloseHandle(handle)
+        return False
+    _instance_mutex_handle = handle
+    return True
+
+
+def release_single_instance_mutex():
+    """释放当前进程持有的单实例互斥体。"""
+    global _instance_mutex_handle
+    if _instance_mutex_handle:
+        kernel32.CloseHandle(_instance_mutex_handle)
+        _instance_mutex_handle = None
+
 
 def is_admin():
     """检测当前进程是否拥有管理员权限"""
