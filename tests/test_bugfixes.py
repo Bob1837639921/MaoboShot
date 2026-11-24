@@ -12,6 +12,18 @@ from core.translator import safe_google_translate
 
 
 class PygameStopPlaybackTests(unittest.TestCase):
+    def test_playback_opens_configured_output_device(self):
+        mixer = Mock()
+        mixer.music.get_busy.return_value = False
+        fake_pygame = SimpleNamespace(mixer=mixer)
+        with patch.dict("sys.modules", {"pygame": fake_pygame}):
+            with patch.object(tts_engine, "load_app_config", return_value={"AUDIO_OUTPUT_DEVICE": "Headphones"}):
+                tts_engine._play_audio_file("sample.mp3")
+
+        mixer.init.assert_called_once_with(devicename="Headphones")
+        mixer.music.play.assert_called_once()
+        mixer.quit.assert_called_once()
+
     def test_stop_tts_playback_interrupts_active_pygame_loop(self):
         fake_music = MagicMock()
         busy_calls = 0

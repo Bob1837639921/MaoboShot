@@ -15,6 +15,23 @@ except ImportError:
     HAS_IPA = False
 
 GOOGLE_TRANSLATE_API_URL = "https://translate.googleapis.com/translate_a/single"
+GOOGLE_TRANSLATE_API_ENDPOINTS = (
+    (
+        "https://clients5.google.com/translate_a/t",
+        {"client": "dict-chrome-ex"},
+        "compact",
+    ),
+    (
+        GOOGLE_TRANSLATE_API_URL,
+        {"client": "at", "dt": "t"},
+        "single",
+    ),
+    (
+        GOOGLE_TRANSLATE_API_URL,
+        {"client": "gtx", "dt": "t"},
+        "single",
+    ),
+)
 GOOGLE_TRANSLATE_HTML_URLS = (
     "https://translate.google.com/m",
     "https://translate.google.com.hk/m",
@@ -123,26 +140,45 @@ def google_translate_text(text: str, target: str) -> str:
     source_text = normalize_google_source_text(text) if target == 'zh-CN' else text
     last_error = None
 
-    for _ in range(GOOGLE_TRANSLATE_RETRIES):
-        try:
-            response = requests.get(
-                GOOGLE_TRANSLATE_API_URL,
-                params={"client": "gtx", "sl": "auto", "tl": target, "dt": "t", "q": source_text},
-                headers=GOOGLE_TRANSLATE_HEADERS,
-                timeout=GOOGLE_TRANSLATE_TIMEOUT
-            )
-            response.raise_for_status()
-            data = response.json()
-            translated = "".join(part[0] for part in data[0] if part and part[0])
-            if translated:
-                return translated
-            raise RuntimeError("Google 翻译结果为空")
-        except requests.RequestException as e:
-            last_error = e
-            time.sleep(0.35)
-        except Exception as e:
-            last_error = e
-            break
+    for url, endpoint_params, response_format in GOOGLE_TRANSLATE_API_ENDPOINTS:
+        for attempt in range(GOOGLE_TRANSLATE_RETRIES):
+            try:
+                params = {
+                    **endpoint_params,
+                    "sl": "auto",
+                    "tl": target,
+                    "q": source_text,
+                }
+                response = requests.get(
+                    url,
+                    params=params,
+                    headers=GOOGLE_TRANSLATE_HEADERS,
+                    timeout=GOOGLE_TRANSLATE_TIMEOUT,
+                )
+                response.raise_for_status()
+                data = response.json()
+                if response_format == "compact":
+                    translated = data[0][0] if data and data[0] else ""
+                else:
+                    translated = "".join(part[0] for part in data[0] if part and part[0])
+                if translated:
+                    return translated
+                raise RuntimeError("Google 翻译结果为空")
+            except requests.HTTPError as e:
+                last_error = e
+                # Rate limits and client-specific rejections should immediately
+                # fall through to the next Google endpoint.
+                if e.response is not None and e.response.status_code in (403, 429):
+                    break
+                if attempt + 1 < GOOGLE_TRANSLATE_RETRIES:
+                    time.sleep(0.35)
+            except requests.RequestException as e:
+                last_error = e
+                if attempt + 1 < GOOGLE_TRANSLATE_RETRIES:
+                    time.sleep(0.35)
+            except (ValueError, TypeError, IndexError, KeyError, RuntimeError) as e:
+                last_error = e
+                break
 
     for url in GOOGLE_TRANSLATE_HTML_URLS:
         for _ in range(GOOGLE_TRANSLATE_RETRIES):

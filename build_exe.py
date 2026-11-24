@@ -1,4 +1,5 @@
 import argparse
+import os
 import shutil
 from pathlib import Path
 import PyInstaller.__main__
@@ -202,12 +203,32 @@ def build(deploy_dir=None, output_root=None):
 
     print("Starting build...")
     print("Args:", " ".join(args))
-    PyInstaller.__main__.run(args)
+    # PyInstaller resolves transitive DLLs from PATH. Put System32 first so a
+    # developer toolchain cannot shadow Windows ICU with an incompatible copy.
+    original_path = os.environ.get("PATH", "")
+    system32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+    os.environ["PATH"] = os.pathsep.join(
+        [str(system32)] + [entry for entry in original_path.split(os.pathsep) if entry]
+    )
+    try:
+        PyInstaller.__main__.run(args)
+    finally:
+        os.environ["PATH"] = original_path
+
+    # Qt on Windows uses the system ICU shim. A foreign ICU copied beside the
+    # executable wins DLL search order and makes QtWidgets fail to import.
+    internal_dir = dist_dir / "ManboShot" / "_internal"
+    conflicting_icu = [internal_dir / "icuuc.dll", *internal_dir.glob("icudt*.dll")]
+    for dll_path in conflicting_icu:
+        if dll_path.exists():
+            dll_path.unlink()
+            print(f"Removed conflicting build-environment DLL: {dll_path.name}")
 
     source_dir = dist_dir / 'ManboShot'
     if source_dir.exists():
         freed_mb = prune_bundle(source_dir) / (1024 * 1024)
         print(f"Pruned unused bundle files: {freed_mb:.1f} MB freed.")
+
     print("\nBuild complete! Check dist/ManboShot folder.")
 
     # --- 🚀 可选部署到指定目录 ---

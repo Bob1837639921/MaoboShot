@@ -19,6 +19,7 @@ CREATE_NO_WINDOW = 0x08000000
 _active_processes = []
 _process_lock = threading.Lock()
 _pygame_lock = threading.Lock()
+_audio_subsystem_lock = threading.Lock()
 
 # 播放代次：每次开始朗读或主动打断都会递增，旧代次的朗读据此自行退出
 _playback_lock = threading.Lock()
@@ -74,6 +75,26 @@ def stop_tts_playback():
         _playback_generation += 1
     cleanup_tts_processes()
 
+def list_audio_output_devices():
+    try:
+        import pygame
+        from pygame._sdl2 import sdl2
+        from pygame._sdl2.audio import get_audio_device_names
+
+        # Enumerating only needs SDL audio, even when no default device can open.
+        with _audio_subsystem_lock:
+            if pygame.mixer.get_init():
+                return get_audio_device_names(False)
+            sdl2.init_subsystem(sdl2.INIT_AUDIO)
+            try:
+                return get_audio_device_names(False)
+            finally:
+                pygame.mixer.quit()
+    except (ImportError, RuntimeError, OSError) as error:
+        logger.warning("无法列出音频输出设备: %s", error)
+        return None
+
+
 def _play_audio_file(audio_path, generation=None):
     """使用 pygame 播放本地音频文件，作为 mpv 不存在时的兜底方案。若 pygame 缺失则尝试用内置 winsound 播放 wav 文件。"""
     with _pygame_lock:
@@ -81,7 +102,16 @@ def _play_audio_file(audio_path, generation=None):
             return
         try:
             import pygame
-            pygame.mixer.init()
+            device = load_app_config().get("AUDIO_OUTPUT_DEVICE")
+            with _audio_subsystem_lock:
+                if device:
+                    try:
+                        pygame.mixer.init(devicename=device)
+                    except pygame.error:
+                        logger.warning("指定的朗读输出设备不可用，改用 Windows 默认设备")
+                        pygame.mixer.init()
+                else:
+                    pygame.mixer.init()
             try:
                 pygame.mixer.music.load(audio_path)
                 pygame.mixer.music.play()
@@ -92,7 +122,8 @@ def _play_audio_file(audio_path, generation=None):
                     time.sleep(0.05)
                 pygame.mixer.music.unload()
             finally:
-                pygame.mixer.quit()
+                with _audio_subsystem_lock:
+                    pygame.mixer.quit()
         except Exception as e:
             logger.warning(f"pygame 播放失败或未安装: {e}")
             # 如果是 wav 文件，尝试使用内置 winsound 播放 (零依赖)
@@ -141,66 +172,58 @@ def _find_audio_payload(data):
                 return found
     return None
 
-def _play_xiaomi_tts(text, config, send_status, generation=None):
-    api_key = config.get("XIAOMI_TTS_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("未配置小米 MiMo TTS API Key")
-
-    base_url = config.get("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1").strip()
-    if not base_url:
-        base_url = "https://token-plan-cn.xiaomimimo.com/v1"
-    base_url = base_url.rstrip("/") + "/"
-    endpoint = urljoin(base_url, "chat/completions")
-    model = config.get("XIAOMI_TTS_MODEL", "mimo-v2.5-tts").strip() or "mimo-v2.5-tts"
-    if model == "mimo-v2-tts":
-        model = "mimo-v2.5-tts"
-    voice = config.get("XIAOMI_TTS_VOICE", "mimo_default").strip() or "mimo_default"
-    style = config.get("XIAOMI_TTS_STYLE", "").strip()
+def _play_custom_tts(text, config, send_status, generation=None):
+    base_url = config["TTS_BASE_URL"]
+    model = config["TTS_MODEL"]
+    voice = config["TTS_VOICE"]
+    style = config["TTS_STYLE"]
+    if not base_url.startswith(("https://", "http://")) or not model or not voice:
+        raise RuntimeError("请填写语音服务地址、模型和音色")
     
-    # 补全标点符号，防止 TTS 在句尾突然断音或吐字不清
-    if text and not text.endswith((".", "!", "?", "。", "！", "？", "”", '"', "”", "'")):
-        text += "。"
-        
-    messages = []
-    if style:
-        if re.match(r"^\s*[\(\uff08\[][^)\uff09\]]+[\)\uff09\]]", style):
-            text = f"{style}{text}"
-        else:
-            messages.append({"role": "user", "content": style})
-    messages.append({"role": "assistant", "content": text})
+    headers = {}
+    api_key = config["TTS_API_KEY"]
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
-    send_status("✨ 小米合成中...")
+    if config["TTS_API_FORMAT"] == "chat":
+        route = "chat/completions"
+        messages = []
+        if style and re.match(r"^\s*[\(\uff08\[][^)\uff09\]]+[\)\uff09\]]", style):
+            text = f"{style}{text}"
+        elif style:
+            messages.append({"role": "user", "content": style})
+        messages.append({"role": "assistant", "content": text})
+        payload = {"model": model, "messages": messages, "audio": {"format": "wav", "voice": voice}}
+        if api_key:
+            headers["api-key"] = api_key
+    else:
+        route = "audio/speech"
+        payload = {"model": model, "input": text, "voice": voice, "response_format": "wav"}
+        if style:
+            payload["instructions"] = style
+
+    endpoint = urljoin(base_url.rstrip("/") + "/", route)
+    send_status("✨ 语音合成中...")
     response = requests.post(
         endpoint,
-        headers={
-            "api-key": api_key,
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": model,
-            "messages": messages,
-            "audio": {
-                "format": "wav",
-                "voice": voice
-            }
-        },
+        headers=headers,
+        json=payload,
         timeout=45
     )
 
     content_type = response.headers.get("content-type", "")
     if response.status_code >= 400:
-        raise RuntimeError(f"小米 TTS 请求失败 {response.status_code}: {response.text[:500]}")
+        raise RuntimeError(f"语音服务请求失败（HTTP {response.status_code}）")
 
-    audio_path = os.path.join(tempfile.gettempdir(), f"maoboshot_xiaomi_{uuid.uuid4().hex}.wav")
+    audio_path = os.path.join(tempfile.gettempdir(), f"maoboshot_speech_{uuid.uuid4().hex}.wav")
     try:
-        if content_type.startswith("audio/"):
+        if content_type.startswith(("audio/", "application/octet-stream")):
             audio_bytes = response.content
         else:
             payload = response.json()
             found = _find_audio_payload(payload)
             if not found:
-                raise RuntimeError(f"小米 TTS 响应中未找到音频字段: {str(payload)[:500]}")
+                raise RuntimeError("语音服务未返回音频")
             kind, value = found
             if kind == "url":
                 audio_response = requests.get(value, timeout=45)
@@ -262,7 +285,7 @@ def play_voice_worker(text, status_signal=None):
             t = ('，' if has_zh else ', ') + t
         return t
 
-    # 云端 TTS (Edge / 小米) 需要前缀防止首字节被裁剪；Piper 分支单独处理
+    # Edge 的开头留一小段停顿，避免音频设备初始化时裁掉首音节。
     safe_text_for_speech = preprocess_text_for_speech(text, add_prefix=True)
     
     config = load_app_config()
@@ -279,8 +302,8 @@ def play_voice_worker(text, status_signal=None):
         send_status("⏳ 准备中...")
         if use_cloud:
             send_status("☁️ 云端连接...")
-            if ai_tts_provider == "xiaomi":
-                _play_xiaomi_tts(safe_text_for_speech, config, send_status, generation)
+            if ai_tts_provider == "custom":
+                _play_custom_tts(preprocess_text_for_speech(text), config, send_status, generation)
                 return
 
             # 智能判断语言并选择最顶级的发音人
@@ -350,15 +373,7 @@ def play_voice_worker(text, status_signal=None):
                         except Exception:
                             pass
 
-            try:
-                asyncio.run(stream_edge())
-            except Exception as edge_err:
-                xiaomi_key = config.get("XIAOMI_TTS_API_KEY", "").strip()
-                if xiaomi_key:
-                    logger.warning(f"Edge TTS 失败 ({edge_err})，自动回退至小米 MiMo TTS")
-                    _play_xiaomi_tts(safe_text_for_speech, config, send_status, generation)
-                else:
-                    raise
+            asyncio.run(stream_edge())
 
         else:
             send_status("⚡ 播放中...")

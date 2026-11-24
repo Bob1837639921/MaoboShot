@@ -19,12 +19,13 @@
 | `AI_BASE_URL` | OpenAI 兼容接口地址 |
 | `THEME` | `light`、`dark`、`graphite`、`blueprint` 或 `signal` |
 | `USE_LOCAL_TTS` | 是否优先使用本地 Piper TTS |
-| `AI_TTS_PROVIDER` | `edge` 或 `xiaomi` |
-| `XIAOMI_TTS_API_KEY` | 小米 MiMo TTS 或兼容网关 Key |
-| `XIAOMI_TTS_BASE_URL` | 小米 MiMo OpenAI 兼容接口地址 |
-| `XIAOMI_TTS_MODEL` | 小米 TTS 模型名称 |
-| `XIAOMI_TTS_VOICE` | 小米 TTS 音色 |
-| `XIAOMI_TTS_STYLE` | 可选语音风格 |
+| `AI_TTS_PROVIDER` | `edge` 或 `custom`，使用选定的在线服务 |
+| `TTS_API_FORMAT` | `speech` 调用 `/audio/speech`；`chat` 兼容旧的对话语音接口 |
+| `TTS_API_KEY` | 按自定义语音服务要求填写 |
+| `TTS_BASE_URL` | 自定义语音服务基础地址，按服务要求包含版本路径（如 `/v1`） |
+| `TTS_MODEL` | 语音模型 ID |
+| `TTS_VOICE` | 音色 ID |
+| `TTS_STYLE` | 可选风格指令，需模型支持 |
 | `AUDIO_PLAYER` | `pygame` 或 `mpv` |
 | `HOTKEY_SHOW` | 显示/隐藏窗口快捷键 |
 | `HOTKEY_SNIP` | 截图翻译快捷键 |

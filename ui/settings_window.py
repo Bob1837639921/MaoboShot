@@ -6,6 +6,7 @@ from PySide6.QtCore import QRectF, Qt, QSize
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPainterPath, QPixmap
 from core.config import load_app_config, save_app_config, ICON_PATH
 from core.pet_pack import discover_pet_packs
+from core.tts_engine import list_audio_output_devices
 from ui.theme import (
     THEME_LABELS,
     THEME_ORDER,
@@ -51,6 +52,31 @@ class ClearArrowComboBox(QComboBox):
             Qt.AlignCenter,
             "▾",
         )
+
+
+class AudioOutputComboBox(ClearArrowComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.addItem("跟随 Windows 默认设备", "")
+        self._devices = ()
+
+    def refresh_devices(self, selected=None):
+        if selected is None:
+            selected = self.currentData()
+        devices = list_audio_output_devices()
+        if devices is not None:
+            self._devices = tuple(dict.fromkeys(devices))
+        self.clear()
+        self.addItem("跟随 Windows 默认设备", "")
+        for device in self._devices:
+            self.addItem(device, device)
+        if selected and self.findData(selected) < 0:
+            self.addItem(f"{selected}（当前不可用）", selected)
+        self.setCurrentIndex(max(0, self.findData(selected)))
+
+    def showPopup(self):
+        self.refresh_devices()
+        super().showPopup()
 
 
 def create_theme_preview(theme_name):
@@ -293,7 +319,7 @@ class SettingsWindow(QDialog):
         engine_layout.addWidget(self.tts_combo)
         
         self.ai_tts_provider_combo = ClearArrowComboBox()
-        self.ai_tts_provider_combo.addItems(["Edge TTS (免费/稳定)", "小米 MiMo TTS (高级)"])
+        self.ai_tts_provider_combo.addItems(["Edge TTS", "自定义语音服务"])
         
         provider_label = QLabel("云端 AI 提供商")
         provider_label.setProperty("class", "input-label")
@@ -303,67 +329,38 @@ class SettingsWindow(QDialog):
         engine_card = self.create_card("语音引擎设置", "配置文本朗读的基础行为和提供商。", engine_layout)
         layout.addWidget(engine_card)
 
-        # Xiaomi Card
-        xiaomi_layout = QVBoxLayout()
-        xiaomi_layout.setSpacing(10)
-
-        self.xiaomi_key_input = QLineEdit()
-        self.xiaomi_key_input.setEchoMode(QLineEdit.Password)
-        self.xiaomi_key_input.setPlaceholderText("填写 API Key")
-        
-        x_key_lbl = QLabel("API Key")
-        x_key_lbl.setProperty("class", "input-label")
-        xiaomi_layout.addWidget(x_key_lbl)
-        xiaomi_layout.addWidget(self.xiaomi_key_input)
-
-        row_layout = QHBoxLayout()
-        row_layout.setSpacing(15)
-        
-        col1 = QVBoxLayout()
-        self.xiaomi_model_input = QLineEdit()
-        self.xiaomi_model_input.setPlaceholderText("mimo-v2.5-tts")
-        m_lbl = QLabel("模型")
-        m_lbl.setProperty("class", "input-label")
-        col1.addWidget(m_lbl)
-        col1.addWidget(self.xiaomi_model_input)
-        
-        col2 = QVBoxLayout()
-        self.xiaomi_voice_combo = ClearArrowComboBox()
-        self.xiaomi_voice_combo.addItems(["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"])
-        v_lbl = QLabel("音色")
-        v_lbl.setProperty("class", "input-label")
-        col2.addWidget(v_lbl)
-        col2.addWidget(self.xiaomi_voice_combo)
-        
-        row_layout.addLayout(col1)
-        row_layout.addLayout(col2)
-        xiaomi_layout.addLayout(row_layout)
-
-        self.xiaomi_base_input = QLineEdit()
-        self.xiaomi_base_input.setPlaceholderText("https://token-plan-cn.xiaomimimo.com/v1")
-        b_lbl = QLabel("Base URL")
-        b_lbl.setProperty("class", "input-label")
-        xiaomi_layout.addWidget(b_lbl)
-        xiaomi_layout.addWidget(self.xiaomi_base_input)
-
-        self.xiaomi_style_input = QTextEdit()
-        self.xiaomi_style_input.setFixedHeight(72)
-        self.xiaomi_style_input.setAcceptRichText(False)
-        self.xiaomi_style_input.setPlaceholderText("例如：温柔、东北话、(粤语)、用轻快上扬的语调朗读")
-        s_lbl = QLabel("特殊风格 (Style)")
-        s_lbl.setProperty("class", "input-label")
-        xiaomi_layout.addWidget(s_lbl)
-        xiaomi_layout.addWidget(self.xiaomi_style_input)
-        style_hint = QLabel(
-            "风格示例：开心/悲伤/愤怒/平静/冷漠；温柔/高冷/活泼/严肃/慵懒；"
-            "磁性/清亮/甜美/沙哑；夹子音/御姐音/正太音/大叔音；"
-            "东北话/四川话/河南话/粤语；孙悟空/林黛玉；(唱歌)"
+        custom_layout = QVBoxLayout()
+        custom_layout.setSpacing(10)
+        self.tts_api_format_combo = ClearArrowComboBox()
+        self.tts_api_format_combo.addItem("OpenAI 兼容 · /audio/speech", "speech")
+        self.tts_api_format_combo.addItem("对话语音兼容 · /chat/completions", "chat")
+        self.tts_base_input = QLineEdit()
+        self.tts_key_input = QLineEdit()
+        self.tts_key_input.setEchoMode(QLineEdit.Password)
+        self.tts_model_input = QLineEdit()
+        self.tts_voice_input = QLineEdit()
+        self.tts_style_input = QTextEdit()
+        self.tts_style_input.setFixedHeight(72)
+        self.tts_style_input.setAcceptRichText(False)
+        for title, field in (
+            ("接口格式", self.tts_api_format_combo),
+            ("服务地址（Base URL）", self.tts_base_input),
+            ("API Key（按服务要求填写）", self.tts_key_input),
+            ("模型 ID", self.tts_model_input),
+            ("音色 ID", self.tts_voice_input),
+            ("风格指令（可选，需模型支持）", self.tts_style_input),
+        ):
+            label = QLabel(title)
+            label.setProperty("class", "input-label")
+            label.setBuddy(field)
+            custom_layout.addWidget(label)
+            custom_layout.addWidget(field)
+        self.tts_base_input.setPlaceholderText("https://example.com/v1")
+        custom_card = self.create_card("自定义语音服务", "", custom_layout)
+        custom_card.setHidden(True)
+        self.ai_tts_provider_combo.currentIndexChanged.connect(
+            lambda index: custom_card.setVisible(index == 1)
         )
-        style_hint.setProperty("class", "card-desc")
-        style_hint.setWordWrap(True)
-        xiaomi_layout.addWidget(style_hint)
-
-        xiaomi_card = self.create_card("小米 MiMo 专属配置", "仅当上方提供商选择小米 MiMo 时生效。", xiaomi_layout)
         
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -376,7 +373,7 @@ class SettingsWindow(QDialog):
         inner_layout = QVBoxLayout(inner_widget)
         inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.addWidget(engine_card)
-        inner_layout.addWidget(xiaomi_card)
+        inner_layout.addWidget(custom_card)
         inner_layout.addStretch()
         
         scroll_area.setWidget(inner_widget)
@@ -400,6 +397,17 @@ class SettingsWindow(QDialog):
         p_lbl.setProperty("class", "input-label")
         g_layout.addWidget(p_lbl)
         g_layout.addWidget(self.player_combo)
+
+        self.audio_output_combo = AudioOutputComboBox()
+        self.audio_output_combo.setToolTip("使用 pygame 时，选择 ManboShot 朗读的输出设备")
+        output_label = QLabel("朗读输出设备")
+        output_label.setProperty("class", "input-label")
+        output_label.setBuddy(self.audio_output_combo)
+        g_layout.addWidget(output_label)
+        g_layout.addWidget(self.audio_output_combo)
+        self.player_combo.currentIndexChanged.connect(
+            lambda index: self.audio_output_combo.setEnabled(index == 0)
+        )
 
         self.theme_combo = ClearArrowComboBox()
         self.theme_combo.setIconSize(QSize(52, 22))
@@ -517,21 +525,17 @@ class SettingsWindow(QDialog):
         self.tts_combo.setCurrentIndex(1 if use_local_tts else 0)
 
         ai_tts_provider = config.get("AI_TTS_PROVIDER", "edge")
-        self.ai_tts_provider_combo.setCurrentIndex(1 if ai_tts_provider == "xiaomi" else 0)
-        self.xiaomi_key_input.setText(config.get("XIAOMI_TTS_API_KEY", ""))
-        xiaomi_base_url = config.get("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
-        self.xiaomi_base_input.setText(xiaomi_base_url)
-        xiaomi_model = config.get("XIAOMI_TTS_MODEL", "mimo-v2.5-tts")
-        if xiaomi_model == "mimo-v2-tts":
-            xiaomi_model = "mimo-v2.5-tts"
-        self.xiaomi_model_input.setText(xiaomi_model)
-        voice = config.get("XIAOMI_TTS_VOICE", "mimo_default")
-        voice_index = self.xiaomi_voice_combo.findText(voice)
-        self.xiaomi_voice_combo.setCurrentIndex(voice_index if voice_index >= 0 else 0)
-        self.xiaomi_style_input.setPlainText(config.get("XIAOMI_TTS_STYLE", ""))
+        self.ai_tts_provider_combo.setCurrentIndex(1 if ai_tts_provider == "custom" else 0)
+        self.tts_api_format_combo.setCurrentIndex(1 if config.get("TTS_API_FORMAT") == "chat" else 0)
+        self.tts_key_input.setText(config.get("TTS_API_KEY", ""))
+        self.tts_base_input.setText(config.get("TTS_BASE_URL", ""))
+        self.tts_model_input.setText(config.get("TTS_MODEL", ""))
+        self.tts_voice_input.setText(config.get("TTS_VOICE", ""))
+        self.tts_style_input.setPlainText(config.get("TTS_STYLE", ""))
         
         player_engine = config.get("AUDIO_PLAYER", "pygame")
         self.player_combo.setCurrentIndex(1 if player_engine == "mpv" else 0)
+        self.audio_output_combo.refresh_devices(config.get("AUDIO_OUTPUT_DEVICE") or "")
             
         theme = normalize_theme(config.get("THEME", "dark"))
         theme_index = self.theme_combo.findData(theme)
@@ -777,7 +781,7 @@ class SettingsWindow(QDialog):
     def save_settings(self):
         theme_val = normalize_theme(self.theme_combo.currentData())
         use_local_tts_val = (self.tts_combo.currentIndex() == 1)
-        ai_tts_provider = "xiaomi" if self.ai_tts_provider_combo.currentIndex() == 1 else "edge"
+        ai_tts_provider = "custom" if self.ai_tts_provider_combo.currentIndex() == 1 else "edge"
         new_config = {
             "DOUBAO_API_KEY": self.key_input.text().strip(),
             "DOUBAO_MODEL_EP": self.ep_input.text().strip(),
@@ -785,12 +789,14 @@ class SettingsWindow(QDialog):
             "THEME": theme_val,
             "USE_LOCAL_TTS": use_local_tts_val,
             "AI_TTS_PROVIDER": ai_tts_provider,
-            "XIAOMI_TTS_API_KEY": self.xiaomi_key_input.text().strip(),
-            "XIAOMI_TTS_BASE_URL": self.xiaomi_base_input.text().strip() or "https://token-plan-cn.xiaomimimo.com/v1",
-            "XIAOMI_TTS_MODEL": self.xiaomi_model_input.text().strip() or "mimo-v2.5-tts",
-            "XIAOMI_TTS_VOICE": self.xiaomi_voice_combo.currentText(),
-            "XIAOMI_TTS_STYLE": self.xiaomi_style_input.toPlainText().strip(),
+            "TTS_API_FORMAT": self.tts_api_format_combo.currentData(),
+            "TTS_API_KEY": self.tts_key_input.text().strip(),
+            "TTS_BASE_URL": self.tts_base_input.text().strip(),
+            "TTS_MODEL": self.tts_model_input.text().strip(),
+            "TTS_VOICE": self.tts_voice_input.text().strip(),
+            "TTS_STYLE": self.tts_style_input.toPlainText().strip(),
             "AUDIO_PLAYER": "mpv" if self.player_combo.currentIndex() == 1 else "pygame",
+            "AUDIO_OUTPUT_DEVICE": self.audio_output_combo.currentData(),
             "HOTKEY_SHOW": self.hotkey_show_edit.keySequence().toString(),
             "HOTKEY_SNIP": self.hotkey_snip_edit.keySequence().toString(),
             "PET_ENABLED": self.pet_enabled_check.isChecked(),

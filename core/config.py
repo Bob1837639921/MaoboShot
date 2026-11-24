@@ -56,12 +56,14 @@ DEFAULT_CONFIG = {
     "THEME": "light",
     "USE_LOCAL_TTS": True,
     "AI_TTS_PROVIDER": "edge",
-    "XIAOMI_TTS_API_KEY": os.getenv("XIAOMI_TTS_API_KEY", ""),
-    "XIAOMI_TTS_BASE_URL": os.getenv("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"),
-    "XIAOMI_TTS_MODEL": os.getenv("XIAOMI_TTS_MODEL", "mimo-v2.5-tts"),
-    "XIAOMI_TTS_VOICE": os.getenv("XIAOMI_TTS_VOICE", "mimo_default"),
-    "XIAOMI_TTS_STYLE": os.getenv("XIAOMI_TTS_STYLE", ""),
+    "TTS_API_FORMAT": "speech",
+    "TTS_API_KEY": os.getenv("TTS_API_KEY", ""),
+    "TTS_BASE_URL": os.getenv("TTS_BASE_URL", ""),
+    "TTS_MODEL": os.getenv("TTS_MODEL", ""),
+    "TTS_VOICE": os.getenv("TTS_VOICE", ""),
+    "TTS_STYLE": os.getenv("TTS_STYLE", ""),
     "AUDIO_PLAYER": "pygame",
+    "AUDIO_OUTPUT_DEVICE": "",
     "HOTKEY_SHOW": "Alt+Q",
     "HOTKEY_SNIP": "Alt+E",
     "PET_ENABLED": True,
@@ -74,6 +76,26 @@ DEFAULT_CONFIG = {
 _config_lock = threading.Lock()
 _config_cache = None
 _config_cache_key = None
+
+
+def _merge_config(data):
+    merged = {**DEFAULT_CONFIG, **data}
+    if data.get("AI_TTS_PROVIDER") == "xiaomi":
+        legacy_defaults = {
+            "API_KEY": "",
+            "BASE_URL": "https://token-plan-cn.xiaomimimo.com/v1",
+            "MODEL": "mimo-v2.5-tts",
+            "VOICE": "mimo_default",
+            "STYLE": "",
+        }
+        for field, default in legacy_defaults.items():
+            legacy_key = f"XIAOMI_TTS_{field}"
+            merged[f"TTS_{field}"] = data.get(legacy_key, os.getenv(legacy_key, default))
+        if merged["TTS_MODEL"] == "mimo-v2-tts":
+            merged["TTS_MODEL"] = "mimo-v2.5-tts"
+        merged["AI_TTS_PROVIDER"] = "custom"
+        merged["TTS_API_FORMAT"] = "chat"
+    return merged
 
 
 def invalidate_config_cache():
@@ -95,8 +117,7 @@ def load_app_config():
                     return dict(_config_cache)
                 with open(CONFIG_FILE, 'r', encoding='utf-8-sig') as f:
                     data = json.load(f)
-                merged = dict(DEFAULT_CONFIG)
-                merged.update(data)
+                merged = _merge_config(data)
                 _config_cache = merged
                 _config_cache_key = cache_key
                 return dict(merged)
@@ -132,8 +153,7 @@ def save_app_config(data):
             os.fsync(f.fileno())
         os.replace(tmp_path, CONFIG_FILE)
         with _config_lock:
-            merged = dict(DEFAULT_CONFIG)
-            merged.update(data)
+            merged = _merge_config(data)
             stat = CONFIG_FILE.stat()
             _config_cache = merged
             _config_cache_key = (str(CONFIG_FILE), stat.st_mtime_ns, stat.st_size)
