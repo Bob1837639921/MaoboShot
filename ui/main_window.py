@@ -17,6 +17,7 @@ from core.config import ICON_PATH, logger, load_app_config
 from core.tts_engine import play_voice_worker, stop_tts_playback
 from core.translator import TranslatorWorker
 from ui.snipping_widget import SnippingWidget
+from ui.screenshot_translation import ScreenshotTranslationDialog
 from core.ocr_engine import HAS_OCR
 from utils.win_api import (WM_HOTKEY, WM_CLIPBOARDUPDATE, HOTKEY_ID_SHOW, HOTKEY_ID_SNIP,
                            force_focus_window, parse_hotkey_string)
@@ -42,6 +43,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.last_clipboard_text = ""
         self.is_playing_tts = False
         self._pet_bubble_for_current_translation = False
+        self._screenshot_preview = None
 
         self.setup_tray()
         self.tts_status_signal.connect(self.update_play_btn_status)
@@ -275,8 +277,11 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.adjustSize()
         self.handle_show_window()
 
-    def handle_ocr_result(self, text):
-        logger.info("OCR完成，触发翻译")
+    @Slot(int, str, object, object)
+    def handle_ocr_result(self, capture_id, text, image, regions):
+        if capture_id != self.snipper.capture_id:
+            return
+        logger.info("截图 OCR 完成")
         if not text or not text.strip():
             if hasattr(self, "pet"):
                 self.pet.set_state("error")
@@ -292,11 +297,29 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.adjustSize()
             return
 
+        if image is None or not regions:
+            self._open_full_screenshot_translation(text)
+            return
+
+        self.hide_results()
+        self.input_edit.setPlainText(text)
+        self.pet.set_state("idle")
+        self.hide()
+        if self._screenshot_preview is None:
+            self._screenshot_preview = ScreenshotTranslationDialog()
+            self._screenshot_preview.full_translation_requested.connect(self._open_full_screenshot_translation)
+        self._screenshot_preview.show_capture(image, regions, text)
+
+    @Slot(str)
+    def _open_full_screenshot_translation(self, text):
         self._show_translation_workspace()
         self.handle_clipboard_update(text, popup=True, ignore_move=True)
 
     def start_snipping(self):
         if not HAS_OCR: return
+        self.snipper.capture_id += 1
+        if self._screenshot_preview is not None:
+            self._screenshot_preview.close()
         self.hide()
         QTimer.singleShot(200, self.snipper.start_capture)
 
@@ -779,7 +802,14 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
     def mouseReleaseEvent(self, event):
         self.drag_pos = None
 
-    def closeEvent(self, event):
+    @Slot()
+    def shutdown(self):
+        if self._screenshot_preview is not None:
+            self._screenshot_preview.close()
+        if hasattr(self, "snipper"):
+            self.snipper.capture_id += 1
+            self.snipper.close()
+
         try:
             ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_SHOW)
             ctypes.windll.user32.UnregisterHotKey(self.hwnd, HOTKEY_ID_SNIP)
@@ -794,6 +824,5 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             self.thread.wait()
         if hasattr(self, "pet"):
             self.pet.close()
-        super().closeEvent(event)
 
 

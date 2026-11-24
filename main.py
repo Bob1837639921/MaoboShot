@@ -23,17 +23,17 @@ def main():
 
     # 初始化应用
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
 
     # 提前在后台静默预加载OCR引擎 (提升截图秒开体验)
     warmup_ocr_background()
 
-    # 注册退出时的子进程清理回调 (防止孤儿进程/僵尸进程泄露)
-    app.aboutToQuit.connect(cleanup_tts_processes)
-    app.aboutToQuit.connect(release_single_instance_mutex)
-
     # 实例化并显示主窗口
     try:
         window = FloatingWindow()
+        app.aboutToQuit.connect(window.shutdown)
+        app.aboutToQuit.connect(cleanup_tts_processes)
+        app.aboutToQuit.connect(release_single_instance_mutex)
         # window 默认是隐藏的，由热键触发或托盘点击触发
         config = load_app_config()
         show_str = config.get("HOTKEY_SHOW", "Alt+Q")

@@ -8,10 +8,11 @@ from PySide6.QtGui import QPainter, QColor, QPen, QGuiApplication, QPixmap, QFon
 
 from core.ocr_engine import get_ocr_engine, HAS_OCR
 from core.config import logger
+from core.ocr_regions import OCR_PADDING, screenshot_regions
 
 class SnippingWidget(QWidget):
     ocr_started_signal = Signal()
-    ocr_finished_signal = Signal(str)
+    ocr_finished_signal = Signal(int, str, object, object)
 
     def __init__(self):
         super().__init__()
@@ -22,6 +23,7 @@ class SnippingWidget(QWidget):
         self.end_pos = None
         self.is_drawing = False
         self.original_pixmap = None
+        self.capture_id = 0
 
     def start_capture(self):
         self.start_pos = None
@@ -153,11 +155,15 @@ class SnippingWidget(QWidget):
     def process_image(self, x, y, w, h):
         if not HAS_OCR: return
         self.ocr_started_signal.emit()
+        self.capture_id += 1
+        capture_id = self.capture_id
         crop_rect = self._pixmap_source_rect(QRect(x, y, w, h))
         if crop_rect.isEmpty():
-            self.ocr_finished_signal.emit("")
+            self.ocr_finished_signal.emit(capture_id, "", None, ())
             return
         cropped = self.original_pixmap.copy(crop_rect)
+        image = cropped.toImage()
+        image.setDevicePixelRatio(1)
         byte_array = QByteArray()
         buffer = QBuffer(byte_array)
         buffer.open(QIODevice.WriteOnly)
@@ -165,7 +171,9 @@ class SnippingWidget(QWidget):
         pil_img = Image.open(BytesIO(byte_array.data()))
         
         # Start OCR in background thread
-        threading.Thread(target=self._run_ocr_thread, args=(pil_img,), daemon=True).start()
+        threading.Thread(
+            target=self._run_ocr_thread, args=(capture_id, pil_img, image), daemon=True
+        ).start()
 
     def _restore_layout(self, ocr_result):
         if not ocr_result:
@@ -255,12 +263,12 @@ class SnippingWidget(QWidget):
             
         return "\n".join(formatted_lines)
 
-    def _run_ocr_thread(self, img):
+    def _run_ocr_thread(self, capture_id, img, image):
         try:
             ocr = get_ocr_engine()
             if not ocr:
                 logger.error("OCR 引擎尚未就绪或初始化失败。")
-                self.ocr_finished_signal.emit("")
+                self.ocr_finished_signal.emit(capture_id, "", None, ())
                 return
             
             # 将 PIL Image 转换为 numpy 数组
@@ -274,16 +282,17 @@ class SnippingWidget(QWidget):
                 elif img_arr.shape[2] == 4:
                     img_arr = img_arr[:, :, [2, 1, 0, 3]]  # RGBA to BGRA
                 # 使用边缘像素填充 20 像素，避免引入人造边界
-                img_arr = np.pad(img_arr, ((20, 20), (20, 20), (0, 0)), mode='edge')
+                img_arr = np.pad(img_arr, ((OCR_PADDING, OCR_PADDING), (OCR_PADDING, OCR_PADDING), (0, 0)), mode='edge')
             elif img_arr.ndim == 2:
-                img_arr = np.pad(img_arr, ((20, 20), (20, 20)), mode='edge')
+                img_arr = np.pad(img_arr, ((OCR_PADDING, OCR_PADDING), (OCR_PADDING, OCR_PADDING)), mode='edge')
 
             result, _ = ocr(img_arr)
             if result:
                 text = self._restore_layout(result)
-                self.ocr_finished_signal.emit(text if text.strip() else "")
+                regions = screenshot_regions(result, image.width(), image.height())
+                self.ocr_finished_signal.emit(capture_id, text if text.strip() else "", image, regions)
             else:
-                self.ocr_finished_signal.emit("")
+                self.ocr_finished_signal.emit(capture_id, "", None, ())
         except Exception as e:
             logger.error(f"OCR 处理失败: {e}", exc_info=True)
-            self.ocr_finished_signal.emit("")
+            self.ocr_finished_signal.emit(capture_id, "", None, ())
